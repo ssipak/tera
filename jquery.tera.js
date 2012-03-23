@@ -90,8 +90,21 @@
   // ()x0
   var varname_re_part = '(?:\\w+|[$]{1,2})(?:[.]\\w+)*';
 
+  // ()x0
+  var complex_varname_re_part = varname_re_part + '(?:[.]\\w+|\\['+varname_re_part+'\\])*';
+
+  // ()x0
+  var digital_re_part = '[+-]?\\d+(?:[.]\\d+)*';
+
+  var string_re_part = "'[^'\\\\]+'";
+
   //                     1
-  var operand_re_part = '('+varname_re_part+'|'+keyname_re_part+'|[+-]?\\d+(?:[.]\\d+)*|\'[^\'\\\\]+\')';
+  var operand_re_part = '(' + [
+    complex_varname_re_part,
+    keyname_re_part,
+    digital_re_part,
+    string_re_part
+  ].join('|')+')';
 
   //                               1                 2          3
   var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])'
@@ -99,21 +112,22 @@
   var keyname_re = new RegExp('^'+keyname_re_part+'$', 'g');
 
   //                                   1
-  var varorkeyname_re = new RegExp('[{]('+keyname_re_part+'|'+varname_re_part+')[}]', 'g');
+  var varorkeyname_re = new RegExp('[{]('+keyname_re_part+'|'+complex_varname_re_part+')[}]', 'g');
 
   var if_re = new RegExp(
-  //      1
-      '[{](if|if-not|unless)\\s+'
-  //    2 3 4
+  //      1       2
+      '[{](else-)?(if|if-not|unless)\\s+'
+  //    3 4 5
       + func_operand_re_part
-  //            5                   6 7 8
+  //            6                   7 8 9
       + '(?:\\s*([<>]=?|[!=]=)\\s*'+func_operand_re_part+')?'
       + '[}]',
     'gi');
 
-  //                         1       2     3      4         5   6     7      8
-  var if_sub = function(str, constr, var1, func1, funcvar1, op, var2, func2, funcvar2) {
-    var retval = '";if('+(constr==='unless'||constr==='if-not'?'!':'')+'('
+  //                         1      2       3     4      5         6   7     8      9
+  var if_sub = function(str, elsec, constr, var1, func1, funcvar1, op, var2, func2, funcvar2) {
+    var retval = '";'+(elsec ? '}else ' : '')
+               + 'if('+(constr==='unless'||constr==='if-not'?'!':'')+'('
                + (var1 ? var_or_lit_conv(var1) : func_var_or_lit_conv(func1, funcvar1));
     if (op)
     {
@@ -124,17 +138,18 @@
   }
 
   //                                 1                2
-  var if_empty_re = new RegExp('[{]if(-not)?-empty\\s+('+varname_re_part+')[}]', 'gi');
+  var if_empty_re = new RegExp('[{]if(-not)?-empty\\s+('+complex_varname_re_part+')[}]', 'gi');
 
   var each_re = new RegExp(
     //          12     3          4       5          6                   7
-    '[{]each\\s+((\\w+)(\\s+as\\s+(\\w+))?(\\s+at\\s+(\\w+))?\\s+in\\s+)?('+varname_re_part+')[}]', 'gi'
+    '[{]each\\s+((\\w+)(\\s+as\\s+(\\w+))?(\\s+at\\s+(\\w+))?\\s+in\\s+)?('+complex_varname_re_part+')[}]', 'gi'
   );
 
   var var_conv = function (token) {
+    //(/^[$]{1,2}/.test(token)?'':'local')+
     return  keyname_re.test(token)
             ? token
-            : (/^[$]{1,2}/.test(token)?'':'local')+token.replace(/[.]?(\w+)/g, '["$1"]');
+            : token.replace(/[.]?(\w+)/g, '["$1"]').replace(/^\[|(\[)\[/g, '$1local[');
   }
   var var_or_lit_conv = function(token) {
     return  /^([-+]?\d+([.]\d+)*|'[^'\\]+')$/.test(token)
@@ -159,7 +174,7 @@
               .replace(/\\/g, '\\\\').replace(/"/g,  '\\"')
               // {each val as key in key.array}
               .replace(each_re, function(str, a1, val, a3, key, a5, ind, arr) {
-                var retval = '";(function(){var $$='+var_conv(arr)+';var $i=1;retval+=jQuery.map($$,function($,$k){';
+                var retval = '";(function(){var $$='+var_conv(arr)+';var $i=0;retval+=jQuery.map($$,function($,$k){';
                 if (val) {retval += 'local["'+val+'"]=$;';}
                 if (key) {retval += 'local["'+key+'"]=$k;';}
                 if (ind) {retval += 'local["'+ind+'"]=$i;';}
@@ -181,7 +196,7 @@
               .replace(/[{](?:if(-not)?|(unless))-(first|last)[}]/gi, function (str, not, unless, forl) {
                 return '";if($i'
                   + (not || unless ? '!=' : '==')
-                  + (forl == 'first' ? '1' : '$$.length')
+                  + (forl == 'first' ? '0' : '$$.length-1')
                   + '){retval+="';
               })
               // {/if|unless}
