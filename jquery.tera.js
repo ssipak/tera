@@ -1,85 +1,4 @@
-/*
- * Tera Templates (Konstantin Krylov)
- *
- * -= Syntax =-
- *
- * {var}                  =>simple substitution data['var']
- * {var.key.subkey}       =>complex substitution data['var']['key']['subkey']
- * {{}                    =>outputs '{'
- * {}}                    =>outputs '}'
- *
- * IF/UNLESS statement:
- * {if var}
- *   renders this text if var can be cast to boolean true
- *   i.e. IS NOT false, null, empty string or undefined
- * {/if}
- * {if var.key.subkey}
- *   complex substitution can be used
- * {else}
- *   "else" construction is supported
- * {/if}
- * {if var > 10}
- *   variable can be compared with number
- * {/if}
- * {if var1 > var2}
- *   or another variable
- * {/if}
- *
- * {unless var} if var can be cast to boolean false {/unless}
- *
- * {if-empty array_or_hash}
- *
- * {/if}
- *
- * EACH statement:
- * {each array_or_hash}
- *   element's value've been assigned to {$}
- *   element's key've been assigned to {$k}
- *   element's natural index've been assigned to {$i} (NaN for objects, $k+1 for arrays)
- *   {$$} is array_or_hash
- *   {if-first} if element is first in array_or_hash {/if}
- *   {if-last} if element is last in array_or_hash {/if}
- * {/each}
- *
- * {each var as key in hash}
- *   {key}: {var} at {index}
- * {/each}
- * {each var at index in array}
- *   {key}: {var} at {index}
- * {/each}
- * {each var as key at index in array_or_hash}
- *   {key}: {var} at {index}
- * {/each}
- *
- * -= Usage =-
- * Template:
- * <dl>
- *   <dt>title:</dt><dd>{book.title}</dd>
- *   <dt>author:</dt><dd>{book.author.name} {book.author.surname}</dd>
- * </dl>
- * <p>Contents:</p>
- * <ul>
- *   {each book.chapters}
- *     <li>
- *       {if-first}{{}epilog{}}{/if}
- *       {if-last}{{}prolog{}}{/if}
- *       {$i}: "{$.title}"
- *     </li>
- *   {/each}
- * </ul>
- *
- * Data:
- * {book: {
- *   title:    'dictionary',
- *   author:   {name: 'bernard', surname: 'babylon'},
- *   chapters: [
- *     {title: 'first chapter'},
- *     {title: 'second chapter'},
- *     {title: 'third chapter'}
- *   ]
- * }}
- */
-
+// Tera Templates (Konstantin Krylov)
 (function($){
   var cache = {};
   var debug = [];
@@ -167,7 +86,10 @@
   };
   var gen_func_text = function(template) {
     return '(function(data) {'
-            + 'var local=jQuery.extend({}, data);'
+            // Копируем данные в новый объект или массив,
+            // чтобы не затереть данные при определнии переменных в шаблоне
+            + 'var local=(typeof data==="object")?jQuery.extend(jQuery.isArray(data)?[]:{},data):data;'
+            + 'var $=local;'
             + 'var retval="'
             + template
               // escapes quotes and backslash
@@ -209,6 +131,8 @@
               })
               // "{", "}"
               .replace(/[{]([{}])[}]/g, '$1')
+              // {*} - means that space being around shall be erased
+              .replace(/\s*[{]([*])[}]\s*/g, '')
               // Tabs, new lines etc.
               .replace(/\n/g, '\\n')
               .replace(/\t/g, '\\t')
