@@ -1,7 +1,8 @@
 // Tera Templates (Konstantin Krylov)
 (function($){
-  var cache = {};
-  var debug = [];
+  var cache     = {};
+  var cacheById = {};
+  var debug     = [];
 
   // ()x0
   var keyname_re_part = '[$][ki]';
@@ -152,8 +153,49 @@
     }
     return cache[template](data);
   };
+
   $.tera.debug = function() {
     return debug;
   };
-  $.tera.clearCache = function() {cache = {}; debug = [];};
+
+  $.tera.clearCache = function() {
+    cache = {};
+    cacheById = {};
+    debug = [];
+  };
+
+  $.tera.byId = function(id, data) {
+    if (id in cacheById === false)
+    {
+      var $templateEl = $('#'+id);
+      if ($templateEl.length === 0)
+      {
+        return false;
+      }
+      var template  = $templateEl.html();
+      var func_text = gen_func_text(template);
+      debug.push({
+        template: template,
+        func_text: func_text
+      });
+      var func = eval(func_text);
+
+      cache[template] = func;
+      cacheById[id]   = func;
+    }
+    return cacheById[id](data);
+  };
+
+  $('script[type="text/template-tera"').each(function() {
+    var id          = $(this).attr('id');
+    var template    = $(this).html();
+    var func_text   = gen_func_text(template);
+    var func        = eval(func_text);
+    debug.push({
+      template:   template,
+      func_text:  func_text
+    });
+    cache[template] = func;
+    cacheById[id]   = func;
+  });
 })(jQuery);

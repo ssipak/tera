@@ -1,0 +1,48 @@
+<!DOCTYPE HTML>
+<html>
+  <head>
+    <title>Tera Templates Examples</title>
+    <script type="text/javascript" src="jquery-1.7.1.js"></script>
+    <script type="text/javascript" src="jquery.tera.js"></script>
+  </head>
+  <body>
+    <div id="distance_table">
+      <script type="text/template-tera" id="distance_table_template">
+        <h1>Расстояние между населенными пунктами</h1>
+        <table>
+          <tr>
+            <td><input type="checkbox" checked="checked" /></td>
+            {each stations}
+              <td>{$.name}</td>
+            {/each}
+          </tr>
+          {each station in stations}
+            <tr>
+              <td>{$.name}</td>
+              {each stations}
+                <td>{distance[$.id][station.id]}</td>
+              {/each}
+            </tr>
+          {/each}
+        </table>
+      </script>
+    </div>
+    <script type="text/javascript">
+      $(document).ready(function() {
+        var data = {
+          stations: [
+            {name: 'Владивосток', id: 'vl'},
+            {name: 'Нью-Йорк',    id: 'ny'},
+            {name: 'Париж',       id: 'pa'}
+          ],
+          distance: {
+            vl: {vl: 0,   ny: 10, pa: 100},
+            ny: {vl: 10,  ny: 0,  pa: 80},
+            pa: {vl: 100, ny: 80, pa: 0}
+          }
+        };
+        $('#distance_table').html($.tera.byId('distance_table_template', data));
+      });
+    </script>
+  </body>
+</html>
