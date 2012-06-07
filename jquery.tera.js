@@ -77,13 +77,13 @@
             : var_conv(token);
   };
   var func_var_or_lit_conv = function(func, token) {
-    var retval = '';
     switch (func)
     {
-      case 'num': retval += 'Number'; break;
+      case 'num':
+        return 'Number(' + var_or_lit_conv(token) + ')'; break;
+
       default: throw new Error("Unsupported function "+func);
     }
-    return retval+'('+var_or_lit_conv(token)+')';
   };
   var gen_func_text = function(template) {
     return '(function(data) {'
@@ -97,15 +97,15 @@
               .replace(/\\/g, '\\\\').replace(/"/g,  '\\"')
               // {each val as key in key.array}
               .replace(each_re, function(str, a1, val, a3, key, a5, ind, arr) {
-                var retval = '";(function(){var $$='+var_conv(arr)+';var $i=0;retval+=jQuery.map($$,function($,$k){';
+                var retval = '";(function(){var $$='+var_conv(arr)+';var $i=0;jQuery.each($$,function($k,$){';
                 if (val) {retval += 'local["'+val+'"]=$;';}
                 if (key) {retval += 'local["'+key+'"]=$k;';}
                 if (ind) {retval += 'local["'+ind+'"]=$i;';}
-                retval += 'var retval="';
+                retval += 'retval+="';
                 return retval;
               })
               // {/each}
-              .replace(/[{][/]each[}]/gi, '";$$i++;return retval;}).join("");})();retval+="')
+              .replace(/[{][/]each[}]/gi, '";$$i++;});})();retval+="')
               // {if[-not]|unless key.subkey[ op key.subkey]}
               .replace(if_re, if_sub)
               // {if-empty key.array}
@@ -186,16 +186,19 @@
     return cacheById[id](data);
   };
 
-  $('script[type="text/template-tera"').each(function() {
-    var id          = $(this).attr('id');
-    var template    = $(this).html();
-    var func_text   = gen_func_text(template);
-    var func        = eval(func_text);
-    debug.push({
-      template:   template,
-      func_text:  func_text
+  $(function(){
+    $('script[type="text/template-tera"]').each(function() {
+      var id          = $(this).attr('id');
+      var template    = $(this).html();
+      var func_text   = gen_func_text(template);
+      var func        = eval(func_text);
+      debug.push({
+        template:   template,
+        func_text:  func_text
+      });
+      cache[template] = func;
+      cacheById[id]   = func;
     });
-    cache[template] = func;
-    cacheById[id]   = func;
-  });
+  })
+
 })(jQuery);
