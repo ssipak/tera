@@ -1,4 +1,4 @@
-Tera Templates
+﻿Tera Templates
 ==============
 
 Описание
