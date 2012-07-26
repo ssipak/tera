@@ -65,6 +65,9 @@
     '[{]each\\s+((\\w+)(\\s+as\\s+(\\w+))?(\\s+at\\s+(\\w+))?\\s+in\\s+)?('+complex_varname_re_part+')[}]', 'gi'
   );
 
+  //                                    1
+  var escape_re = new RegExp('[{]esc\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
+
   var var_conv = function (token) {
     //(/^[$]{1,2}/.test(token)?'':'local')+
     return  keyname_re.test(token)
@@ -126,6 +129,10 @@
               .replace(/[{][/](if|unless)[}]/gi, '";}retval+="')
               // {else}
               .replace(/[{]else[}]/gi, '";}else{retval+="')
+              // {escape var}
+              .replace(escape_re, function(str, varname) {
+                return '"+jQuery.tera.escape('+var_conv(varname)+')+"'
+              })
               // {var[.key[.subkey]]}
               .replace(varorkeyname_re, function(str, varname) {
                 return '"+'+var_conv(varname)+'+"';
@@ -152,6 +159,18 @@
       cache[template] = eval(func_text);
     }
     return cache[template](data);
+  };
+
+  $.tera.escape = function(str) {
+    return str.replace(/[&<'"]/g, function(match) {
+      switch(match[0])
+      {
+        case '&': return '&amp;';
+        case '<': return '&lt;';
+        case "'": return '&#39;';
+        case '"': return '&quot;';
+      }
+    });
   };
 
   $.tera.debug = function() {
