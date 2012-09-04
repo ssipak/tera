@@ -21,7 +21,13 @@
             <tr>
               <td>{$.name}</td>
               {each stations}
-                <td>{distance[$.id][station.id]}</td>
+                <td>
+                  {if distance[$.id][station.id] == ''}
+                    &mdash;
+                  {else}
+                    {distance[$.id][station.id]}
+                  {/if}
+                </td>
               {/each}
             </tr>
           {/each}

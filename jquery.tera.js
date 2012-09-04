@@ -16,7 +16,7 @@
   // ()x0
   var digital_re_part = '[+-]?\\d+(?:[.]\\d+)*';
 
-  var string_re_part = "'[^'\\\\]+'";
+  var string_re_part = "'[^'\\\\]*'";
 
   //                     1
   var operand_re_part = '(' + [
@@ -74,8 +74,11 @@
             ? token
             : token.replace(/[.]?(\w+)/g, '["$1"]').replace(/^\[|(\[)\[/g, '$1local[');
   }
+
+  var literal_re = new RegExp('^('+[digital_re_part, string_re_part].join('|')+')$', 'gi');
+
   var var_or_lit_conv = function(token) {
-    return  /^([-+]?\d+([.]\d+)*|'[^'\\]+')$/.test(token)
+    return  literal_re.test(token)
             ? token
             : var_conv(token);
   };
