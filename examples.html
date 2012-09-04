@@ -3,7 +3,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Tera Templates Examples</title>
-    <script type="text/javascript" src="jquery-1.7.1.js"></script>
+    <script type="text/javascript" src="http://code.jquery.com/jquery.min.js"></script>
     <script type="text/javascript" src="jquery.tera.js"></script>
   </head>
   <body>
@@ -43,9 +43,9 @@
             {name: 'Париж',       id: 'pa'}
           ],
           distance: {
-            vl: {vl: 0,   ny: 10, pa: 100},
-            ny: {vl: 10,  ny: 0,  pa: 80},
-            pa: {vl: 100, ny: 80, pa: 0}
+            vl: {vl: 0,       ny: 10329.3, pa: 8671.6},
+            ny: {vl: 10329.3, ny: 0,       pa: 5850.3},
+            pa: {vl: 8671.6,  ny: 5850.3,  pa: 0}
           }
         };
         $('#distance_table').html($.tera.byId('distance_table_template', data));
