@@ -27,7 +27,7 @@
   ].join('|')+')';
 
   //                               1                 2          3
-  var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])'
+  var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])';
 
   var keyname_re = new RegExp('^'+keyname_re_part+'$', 'g');
 
@@ -91,8 +91,9 @@
       default: throw new Error("Unsupported function "+func);
     }
   };
+
   var gen_func_text = function(template) {
-    return '(function(data) {'
+    return 'function(data){'
             // Копируем данные в новый объект или массив,
             // чтобы не затереть данные при определнии переменных в шаблоне
             + 'var local=(typeof data==="object")?jQuery.extend(jQuery.isArray(data)?[]:{},data):data;'
@@ -148,8 +149,14 @@
               .replace(/\n/g, '\\n')
               .replace(/\t/g, '\\t')
               .replace(/\r/g, '\\r')
-            + '"; return retval;})';
-  }
+            + '"; return retval;}';
+  };
+
+  var eval_func = function(func_text) {
+    var func;
+    eval('func='+func_text);
+    return func;
+  };
 
   $.tera = function(template, data) {
     if (template in cache === false)
@@ -159,7 +166,7 @@
         template: template,
         func_text: func_text
       });
-      cache[template] = eval(func_text);
+      cache[template] = eval_func(func_text);
     }
     return cache[template](data);
   };
@@ -200,7 +207,7 @@
         template: template,
         func_text: func_text
       });
-      var func = eval(func_text);
+      var func = eval_func(func_text);
 
       cache[template] = func;
       cacheById[id]   = func;
@@ -213,7 +220,7 @@
       var id          = $(this).attr('id');
       var template    = $(this).html();
       var func_text   = gen_func_text(template);
-      var func        = eval(func_text);
+      var func        = eval_func(func_text);
       debug.push({
         template:   template,
         func_text:  func_text
