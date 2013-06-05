@@ -29,7 +29,7 @@
   //                               1                 2          3
   var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])';
 
-  var keyname_re = new RegExp('^'+keyname_re_part+'$', 'g');
+  var keyname_re = new RegExp('^'+keyname_re_part+'$');
 
   //                                   1
   var varorkeyname_re = new RegExp('[{]('+keyname_re_part+'|'+complex_varname_re_part+')[}]', 'g');
