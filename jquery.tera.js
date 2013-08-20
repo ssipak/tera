@@ -2,7 +2,7 @@
 (function($){
   var cache     = {};
   var cacheById = {};
-  var debug     = [];
+  var errors    = [];
 
   // ()x0
   var keyname_re_part = '[$][ki]';
@@ -159,17 +159,87 @@
   };
 
   $.tera = function(template, data) {
-    if (template in cache === false)
-    {
-      var func_text = gen_func_text(template);
-      debug.push({
-        template: template,
-        func_text: func_text
-      });
-      cache[template] = eval_func(func_text);
+    var text;
+    try {
+      if (template in cache === false)
+      {
+        text = gen_func_text(template);
+        cache[template] = { func: eval_func(text), text: text };
+      }
+      return cache[template].func(data);
     }
-    return cache[template](data);
+    catch (e)
+    {
+      var error = {
+        template:   template,
+        func_text:  cache[template].text,
+        data:       $.extend(true, {}, data),
+        error:      e.message
+      };
+
+      if (JSON && JSON.stringify) {
+        error['data_json'] = JSON.stringify(data);
+      }
+
+      errors.push(error);
+
+      throw e;
+    }
   };
+
+  $.tera.byId = function(id, data) {
+    try
+    {
+      if (id in cacheById === false)
+      {
+        var $templateEl = $('#'+id);
+        if ($templateEl.length === 0)
+        {
+          return false;
+        }
+        var template = $templateEl.html(), text, func;
+
+        if (template in cache)
+        {
+          text  = cache.text;
+          func  = cache.func;
+        }
+        else
+        {
+          text  = gen_func_text(template);
+          func  = eval_func(text);
+        }
+
+        cache[template] = { func: func, text: text };
+        cacheById[id]   = { func: func, text: text, template: template };
+      }
+      return cacheById[id].func(data);
+    }
+    catch (e)
+    {
+      var error = {
+        template:   cacheById[id] && cacheById[id].template,
+        func_text:  cacheById[id] && cacheById[id].text,
+        data:       $.extend(true, {}, data),
+        error:      e.message
+      };
+
+      if (JSON && JSON.stringify) {
+        error['data_json'] = JSON.stringify(data);
+      }
+
+      errors.push(error);
+
+      throw e;
+    }
+  };
+
+  $.tera.errors = function() { return errors; };
+
+  $.tera.lastError = function()
+  {
+    return errors[errors.length - 1];
+  }
 
   $.tera.escape = function(str) {
     return str.replace(/[&<'"]/g, function(match) {
@@ -183,50 +253,35 @@
     });
   };
 
-  $.tera.debug = function() {
-    return debug;
-  };
-
   $.tera.clearCache = function() {
     cache = {};
     cacheById = {};
-    debug = [];
-  };
-
-  $.tera.byId = function(id, data) {
-    if (id in cacheById === false)
-    {
-      var $templateEl = $('#'+id);
-      if ($templateEl.length === 0)
-      {
-        return false;
-      }
-      var template  = $templateEl.html();
-      var func_text = gen_func_text(template);
-      debug.push({
-        template: template,
-        func_text: func_text
-      });
-      var func = eval_func(func_text);
-
-      cache[template] = func;
-      cacheById[id]   = func;
-    }
-    return cacheById[id](data);
   };
 
   $(function(){
     $('script[type="text/template-tera"]').each(function() {
-      var id          = $(this).attr('id');
-      var template    = $(this).html();
-      var func_text   = gen_func_text(template);
-      var func        = eval_func(func_text);
-      debug.push({
-        template:   template,
-        func_text:  func_text
-      });
-      cache[template] = func;
-      cacheById[id]   = func;
+      var id, template, text, func;
+
+      try
+      {
+        id        = $(this).attr('id');
+        template  = $(this).html();
+        text      = gen_func_text(template);
+        func      = eval_func(text);
+
+        cache[template] = { func: func, text: text };
+        cacheById[id]   = { func: func, text: text, template: template };
+      }
+      catch (e)
+      {
+        errors.push({
+          template:   template,
+          func_text:  text,
+          error:      e.message
+        });
+
+        throw e;
+      }
     });
   })
 
