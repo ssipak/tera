@@ -92,13 +92,15 @@
     }
   };
 
-  var gen_func_text = function(template) {
-    return 'function(data){'
+  var gen_func_code = function(template) {
+    return ''
             // Копируем данные в новый объект или массив,
             // чтобы не затереть данные при определнии переменных в шаблоне
-            + 'var local=(typeof data==="object")?jQuery.extend(jQuery.isArray(data)?[]:{},data):data;'
-            + 'var $=local;'
-            + 'var retval="'
+            + 'var local=(typeof data==="object")'
+              + '?jQuery.extend(jQuery.isArray(data)?[]:{},data)'
+              + ':data,'
+            + '$=local,'
+            + 'retval="'
             + template
               // escapes quotes and backslash
               .replace(/\\/g, '\\\\').replace(/"/g,  '\\"')
@@ -112,7 +114,7 @@
                 return retval;
               })
               // {/each}
-              .replace(/[{][/]each[}]/gi, '";$$i++;});})();retval+="')
+              .replace(/[{][/]each[}]/gi, '";$$i++})})();retval+="')
               // {if[-not]|unless key.subkey[ op key.subkey]}
               .replace(if_re, if_sub)
               // {if-empty key.array}
@@ -130,9 +132,9 @@
                   + '){retval+="';
               })
               // {/if|unless}
-              .replace(/[{][/](if|unless)[}]/gi, '";}retval+="')
+              .replace(/[{][/](if|unless)[}]/gi, '"}retval+="')
               // {else}
-              .replace(/[{]else[}]/gi, '";}else{retval+="')
+              .replace(/[{]else[}]/gi, '"}else{retval+="')
               // {escape var}
               .replace(escape_re, function(str, varname) {
                 return '"+jQuery.tera.escape('+var_conv(varname)+')+"'
@@ -149,32 +151,26 @@
               .replace(/\n/g, '\\n')
               .replace(/\t/g, '\\t')
               .replace(/\r/g, '\\r')
-            + '"; return retval;}';
-  };
-
-  var eval_func = function(func_text) {
-    var func;
-    eval('func='+func_text);
-    return func;
+            + '"; return retval';
   };
 
   $.tera = function(template, data) {
-    var text;
+    var code;
     try {
       if (template in cache === false)
       {
-        text = gen_func_text(template);
-        cache[template] = { func: eval_func(text), text: text };
+        code = gen_func_code(template);
+        cache[template] = { func: new Function('data', code), code: code};
       }
       return cache[template].func(data);
     }
     catch (e)
     {
       var error = {
-        template:   template,
-        func_text:  cache[template].text,
-        data:       $.extend(true, {}, data),
-        error:      e.message
+        template: template,
+        code:     cache[template].code,
+        data:     $.extend(true, {}, data),
+        error:    e.message
       };
 
       if (JSON && JSON.stringify) {
@@ -197,31 +193,31 @@
         {
           return false;
         }
-        var template = $templateEl.html(), text, func;
+        var template = $templateEl.html(), code, func;
 
         if (template in cache)
         {
-          text  = cache.text;
+          code  = cache.code;
           func  = cache.func;
         }
         else
         {
-          text  = gen_func_text(template);
-          func  = eval_func(text);
+          code  = gen_func_code(template);
+          func  = new Function('data', code);
         }
 
-        cache[template] = { func: func, text: text };
-        cacheById[id]   = { func: func, text: text, template: template };
+        cache[template] = { func: func, code: code };
+        cacheById[id]   = { func: func, code: code, template: template };
       }
       return cacheById[id].func(data);
     }
     catch (e)
     {
       var error = {
-        template:   cacheById[id] && cacheById[id].template,
-        func_text:  cacheById[id] && cacheById[id].text,
-        data:       $.extend(true, {}, data),
-        error:      e.message
+        template: cacheById[id] && cacheById[id].template,
+        code:     cacheById[id] && cacheById[id].code,
+        data:     $.extend(true, {}, data),
+        error:    e.message
       };
 
       if (JSON && JSON.stringify) {
@@ -260,24 +256,24 @@
 
   $(function(){
     $('script[type="text/template-tera"]').each(function() {
-      var id, template, text, func;
+      var id, template, code, func;
 
       try
       {
         id        = $(this).attr('id');
         template  = $(this).html();
-        text      = gen_func_text(template);
-        func      = eval_func(text);
+        code      = gen_func_code(template);
+        func      = new Function('data', code);
 
-        cache[template] = { func: func, text: text };
-        cacheById[id]   = { func: func, text: text, template: template };
+        cache[template] = { func: func, code: code };
+        cacheById[id]   = { func: func, code: code, template: template };
       }
       catch (e)
       {
         errors.push({
-          template:   template,
-          func_text:  text,
-          error:      e.message
+          template: template,
+          code:     code,
+          error:    e.message
         });
 
         throw e;
