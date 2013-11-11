@@ -10,6 +10,7 @@
     <div id="distance_table">
       <script type="text/template-tera" id="distance_table_template">
         <h1>{esc title}</h1>
+        <h2>{tmpl train_list_template trains}</h2>
         <table>
           <tr>
             <td><input type="checkbox" checked="checked" /></td>
@@ -33,11 +34,19 @@
           {/each}
         </table>
       </script>
+
+      <script type="text/template-tera" id="train_list_template">
+        Поезда с именами {each $}
+          {*}
+          {if-first}({else}, {/if}{$k}{if-last}){/if}
+          {*}
+        {/each}
+      </script>
     </div>
     <script type="text/javascript">
       $(document).ready(function() {
         var data = {
-          title: 'Расстояние между <strike>населенными пунктами</strike>',
+          title: 'Расстояния между<strike> населенными пунктами</strike> городами',
           stations: [
             {name: 'Владивосток', id: 'vl'},
             {name: 'Нью-Йорк',    id: 'ny'},
@@ -47,6 +56,11 @@
             vl: {vl: 0,       ny: 10329.3, pa: 8671.6},
             ny: {vl: 10329.3, ny: 0,       pa: 5850.3},
             pa: {vl: 8671.6,  ny: 5850.3,  pa: 0}
+          },
+          trains: {
+            'Россия': ['Москва', 'Екатеринбург', 'Новосибирск', 'Иркутск', 'Владивосток'],
+            'Афанасий Никитин': ['Москва', 'Санкт-Петербург'],
+            'Волга': ['Санкт-Петербург', 'Москва', 'Нижний Новгород']
           }
         };
         $('#distance_table').html($.tera.byId('distance_table_template', data));

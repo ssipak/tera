@@ -68,6 +68,9 @@
   //                                    1
   var escape_re = new RegExp('[{]esc\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
 
+  //                                           1            2
+  var template_re = new RegExp('[{](?:tmpl)\\s+([\\w-]+)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
+
   var var_conv = function (token) {
     //(/^[$]{1,2}/.test(token)?'':'local')+
     return  keyname_re.test(token)
@@ -82,6 +85,7 @@
             ? token
             : var_conv(token);
   };
+
   var func_var_or_lit_conv = function(func, token) {
     switch (func)
     {
@@ -99,14 +103,14 @@
             + 'var local=(typeof data==="object")'
               + '?jQuery.extend(jQuery.isArray(data)?[]:{},data)'
               + ':data,'
-            + '$=local,'
+            + '$=local,$it,'
             + 'retval="'
             + template
               // escapes quotes and backslash
               .replace(/\\/g, '\\\\').replace(/"/g,  '\\"')
               // {each val as key in key.array}
               .replace(each_re, function(str, a1, val, a3, key, a5, ind, arr) {
-                var retval = '";(function(){var $$='+var_conv(arr)+';'
+                var retval = '";$it='+var_conv(arr)+';(function($$){'
                   + 'var $,$k,$keys,'
                       + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
                   + 'while($i<$l){'
@@ -118,7 +122,7 @@
                 return retval;
               })
               // {/each}
-              .replace(/[{][/]each[}]/gi, '";$i++}}).call(this);retval+="')
+              .replace(/[{][/]each[}]/gi, '";$i++}}).call(this,$it);retval+="')
               // {if[-not]|unless key.subkey[ op key.subkey]}
               .replace(if_re, if_sub)
               // {if-empty key.array}
@@ -139,9 +143,13 @@
               .replace(/[{][/](if|unless)[}]/gi, '"}retval+="')
               // {else}
               .replace(/[{]else[}]/gi, '"}else{retval+="')
-              // {escape var}
+              // {esc var} - to escape HTML spec characters
               .replace(escape_re, function(str, varname) {
                 return '"+this.escape('+var_conv(varname)+')+"'
+              })
+              // {tmpl id var} - to substitute another template
+              .replace(template_re, function(str, id, varname) {
+                return '"+this.byId("'+id+'",'+var_conv(varname)+')+"'
               })
               // {var[.key[.subkey]]}
               .replace(varorkeyname_re, function(str, varname) {
