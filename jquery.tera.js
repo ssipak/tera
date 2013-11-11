@@ -106,7 +106,11 @@
               .replace(/\\/g, '\\\\').replace(/"/g,  '\\"')
               // {each val as key in key.array}
               .replace(each_re, function(str, a1, val, a3, key, a5, ind, arr) {
-                var retval = '";(function(){var $$='+var_conv(arr)+';var $i=0;jQuery.each($$,function($k,$){';
+                var retval = '";(function(){var $$='+var_conv(arr)+';'
+                  + 'var $,$k,$keys,'
+                      + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
+                  + 'while($i<$l){'
+                    + '$=(($k=$keys?$keys[$i]:$i),$$[$k]);';
                 if (val) {retval += 'local["'+val+'"]=$;';}
                 if (key) {retval += 'local["'+key+'"]=$k;';}
                 if (ind) {retval += 'local["'+ind+'"]=$i;';}
@@ -114,7 +118,7 @@
                 return retval;
               })
               // {/each}
-              .replace(/[{][/]each[}]/gi, '";$$i++})})();retval+="')
+              .replace(/[{][/]each[}]/gi, '";$i++}}).call(this);retval+="')
               // {if[-not]|unless key.subkey[ op key.subkey]}
               .replace(if_re, if_sub)
               // {if-empty key.array}
@@ -128,7 +132,7 @@
               .replace(/[{](?:if(-not)?|(unless))-(first|last)[}]/gi, function (str, not, unless, forl) {
                 return '";if($i'
                   + (not || unless ? '!=' : '==')
-                  + (forl == 'first' ? '0' : '$$.length-1')
+                  + (forl == 'first' ? '0' : '$l-1')
                   + '){retval+="';
               })
               // {/if|unless}
@@ -137,7 +141,7 @@
               .replace(/[{]else[}]/gi, '"}else{retval+="')
               // {escape var}
               .replace(escape_re, function(str, varname) {
-                return '"+jQuery.tera.escape('+var_conv(varname)+')+"'
+                return '"+this.escape('+var_conv(varname)+')+"'
               })
               // {var[.key[.subkey]]}
               .replace(varorkeyname_re, function(str, varname) {
@@ -162,10 +166,9 @@
         code = gen_func_code(template);
         cache[template] = { func: new Function('data', code), code: code};
       }
-      return cache[template].func(data);
+      return cache[template].func.call($.tera, data);
     }
-    catch (e)
-    {
+    catch (e) {
       var error = {
         template: template,
         code:     cache[template].code,
@@ -184,8 +187,7 @@
   };
 
   $.tera.byId = function(id, data) {
-    try
-    {
+    try {
       if (id in cacheById === false)
       {
         var $templateEl = $('#'+id);
@@ -209,10 +211,9 @@
         cache[template] = { func: func, code: code };
         cacheById[id]   = { func: func, code: code, template: template };
       }
-      return cacheById[id].func(data);
+      return cacheById[id].func.call($.tera, data);
     }
-    catch (e)
-    {
+    catch (e) {
       var error = {
         template: cacheById[id] && cacheById[id].template,
         code:     cacheById[id] && cacheById[id].code,
@@ -232,11 +233,49 @@
 
   $.tera.errors = function() { return errors; };
 
-  $.tera.lastError = function()
-  {
+  $.tera.lastError = function() {
     return errors[errors.length - 1];
   }
 
+  // Получение собственных свойств объекта
+  $.tera.keys = Object.keys || (function () {
+    'use strict';
+    var hasOwnProperty = Object.prototype.hasOwnProperty,
+      hasDontEnumBug = !({toString: null}).propertyIsEnumerable('toString'),
+      dontEnums = [
+        'toString',
+        'toLocaleString',
+        'valueOf',
+        'hasOwnProperty',
+        'isPrototypeOf',
+        'propertyIsEnumerable',
+        'constructor'
+      ],
+      dontEnumsLength = dontEnums.length;
+
+    return function (obj) {
+      if (typeof obj !== 'object' && (typeof obj !== 'function' || obj === null)) {
+        throw new TypeError('Object.keys called on non-object');
+      }
+
+      var result = [], prop, i;
+      for (prop in obj) {
+        if (hasOwnProperty.call(obj, prop)) {
+          result.push(prop);
+        }
+      }
+      if (hasDontEnumBug) {
+        for (i = 0; i < dontEnumsLength; i++) {
+          if (hasOwnProperty.call(obj, dontEnums[i])) {
+            result.push(dontEnums[i]);
+          }
+        }
+      }
+      return result;
+    };
+  }());
+
+  // Экранирование специальных символов HTML
   $.tera.escape = function(str) {
     return str.replace(/[&<'"]/g, function(match) {
       switch(match[0])

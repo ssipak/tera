@@ -9,7 +9,7 @@
   <body>
     <div id="distance_table">
       <script type="text/template-tera" id="distance_table_template">
-        <h1>Расстояние между населенными пунктами</h1>
+        <h1>{esc title}</h1>
         <table>
           <tr>
             <td><input type="checkbox" checked="checked" /></td>
@@ -37,6 +37,7 @@
     <script type="text/javascript">
       $(document).ready(function() {
         var data = {
+          title: 'Расстояние между <strike>населенными пунктами</strike>',
           stations: [
             {name: 'Владивосток', id: 'vl'},
             {name: 'Нью-Йорк',    id: 'ny'},
