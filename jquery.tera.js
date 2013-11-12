@@ -175,7 +175,7 @@
       if (template in cache === false)
       {
         code = gen_func_code(template);
-        cache[template] = { func: new Function('data', code), code: code};
+        cache[template] = { func: new Function('data', 'attrData', code), code: code};
       }
       return cache[template].func.call($.tera, data);
     }
