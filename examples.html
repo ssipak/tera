@@ -8,7 +8,7 @@
   </head>
   <body>
     <div id="distance_table">
-      <script type="text/template-tera" id="distance_table_template">
+      <script type="text/template-tera" id="distance_table_template" data-copyright="Ssipak co">
         <h1>{esc title}</h1>
         <h2>{tmpl train_list_template trains}</h2>
         <table>
@@ -33,6 +33,7 @@
             </tr>
           {/each}
         </table>
+        <small>{$d.copyright}</small>
       </script>
 
       <script type="text/template-tera" id="train_list_template">
@@ -40,7 +41,7 @@
           {*}
           {if-first}({else}, {/if}{$k}{if-last}){/if}
           {*}
-        {/each}
+        {/each}, {esc-json $}
       </script>
     </div>
     <script type="text/javascript">

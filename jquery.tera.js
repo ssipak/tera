@@ -8,7 +8,7 @@
   var keyname_re_part = '[$][ki]';
 
   // ()x0
-  var varname_re_part = '(?:\\w+|[$]{1,2})(?:[.]\\w+)*';
+  var varname_re_part = '(?:\\w+|[$][$d]?)(?:[.]\\w+)*';
 
   // ()x0
   var complex_varname_re_part = varname_re_part + '(?:[.]\\w+|\\['+varname_re_part+'\\])*';
@@ -65,17 +65,16 @@
     '[{]each\\s+((\\w+)(\\s+as\\s+(\\w+))?(\\s+at\\s+(\\w+))?\\s+in\\s+)?('+complex_varname_re_part+')[}]', 'gi'
   );
 
-  //                                    1
-  var escape_re = new RegExp('[{]esc\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
+  //                                1     2               3
+  var escape_re = new RegExp('[{](?:(esc)|(esc-)?json)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
 
-  //                                           1            2
-  var template_re = new RegExp('[{](?:tmpl)\\s+([\\w-]+)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
+  //                               1              2            3
+  var template_re = new RegExp('[{](esc-)?tmpl\\s+([\\w-]+)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
 
   var var_conv = function (token) {
-    //(/^[$]{1,2}/.test(token)?'':'local')+
-    return  keyname_re.test(token)
-            ? token
-            : token.replace(/[.]?(\w+)/g, '["$1"]').replace(/^\[|(\[)\[/g, '$1local[');
+    return token.replace(/(?:[.]|^(?!\$))(\w+)/g, '["$1"]')
+                .replace(/\[(\w+)/g, '[["$1"]')
+                .replace(/^\[|(\[)\[/g, '$1local[');
   }
 
   var literal_re = new RegExp('^('+[digital_re_part, string_re_part].join('|')+')$', 'gi');
@@ -103,7 +102,7 @@
             + 'var local=(typeof data==="object")'
               + '?jQuery.extend(jQuery.isArray(data)?[]:{},data)'
               + ':data,'
-            + '$=local,$it,'
+            + '$=local,$d=attrData,$it,'
             + 'retval="'
             + template
               // escapes quotes and backslash
@@ -143,13 +142,17 @@
               .replace(/[{][/](if|unless)[}]/gi, '"}retval+="')
               // {else}
               .replace(/[{]else[}]/gi, '"}else{retval+="')
-              // {esc var} - to escape HTML spec characters
-              .replace(escape_re, function(str, varname) {
-                return '"+this.escape('+var_conv(varname)+')+"'
+              // {esc|[esc-]json var} - to stringify or to escape HTML spec characters or both
+              .replace(escape_re, function(str, esc, escJson, varname) {
+                return '"+' + (esc || escJson ? 'this.escape(' : '')
+                            + (!esc ? 'this.json(' : '') + var_conv(varname)
+                            + (!esc && escJson ? ')' : '') + ')+"';
               })
-              // {tmpl id var} - to substitute another template
-              .replace(template_re, function(str, id, varname) {
-                return '"+this.byId("'+id+'",'+var_conv(varname)+')+"'
+              // {[esc-]tmpl id var} - to substitute another template
+              .replace(template_re, function(str, esc, id, varname) {
+                return '"+' + (esc ? 'this.escape(' : '')
+                            + 'this.byId("'+id+'",'+var_conv(varname)+')'
+                            + (esc ? ')' : '') + '+"';
               })
               // {var[.key[.subkey]]}
               .replace(varorkeyname_re, function(str, varname) {
@@ -196,9 +199,9 @@
 
   $.tera.byId = function(id, data) {
     try {
+      var $templateEl = $('#'+id);
       if (id in cacheById === false)
       {
-        var $templateEl = $('#'+id);
         if ($templateEl.length === 0)
         {
           return false;
@@ -213,13 +216,13 @@
         else
         {
           code  = gen_func_code(template);
-          func  = new Function('data', code);
+          func  = new Function('data', 'attrData', code);
         }
 
         cache[template] = { func: func, code: code };
         cacheById[id]   = { func: func, code: code, template: template };
       }
-      return cacheById[id].func.call($.tera, data);
+      return cacheById[id].func.call($.tera, data, $templateEl.data());
     }
     catch (e) {
       var error = {
@@ -238,6 +241,8 @@
       throw e;
     }
   };
+
+  $.tera.json = JSON && JSON.stringify || function() { throw new Error('JSON object is not provided') };
 
   $.tera.errors = function() { return errors; };
 
@@ -310,7 +315,7 @@
         id        = $(this).attr('id');
         template  = $(this).html();
         code      = gen_func_code(template);
-        func      = new Function('data', code);
+        func      = new Function('data', 'attrData', code);
 
         cache[template] = { func: func, code: code };
         cacheById[id]   = { func: func, code: code, template: template };
