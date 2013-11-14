@@ -29,8 +29,6 @@
   //                               1                 2          3
   var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])';
 
-  var keyname_re = new RegExp('^'+keyname_re_part+'$');
-
   //                                   1
   var varorkeyname_re = new RegExp('[{]('+keyname_re_part+'|'+complex_varname_re_part+')[}]', 'g');
 
@@ -55,7 +53,7 @@
       retval += var2 ? var_or_lit_conv(var2) : func_var_or_lit_conv(func2, funcvar2);
     }
     return retval+')){retval+="';
-  }
+  };
 
   //                                 1                2
   var if_empty_re = new RegExp('[{]if(-not)?-empty\\s+('+complex_varname_re_part+')[}]', 'gi');
@@ -75,7 +73,7 @@
     return token.replace(/(?:[.]|^(?!\$))(\w+)/g, '["$1"]')
                 .replace(/\[(\w+)/g, '[["$1"]')
                 .replace(/^\[|(\[)\[/g, '$1local[');
-  }
+  };
 
   var literal_re = new RegExp('^('+[digital_re_part, string_re_part].join('|')+')$', 'gi');
 
@@ -89,7 +87,7 @@
     switch (func)
     {
       case 'num':
-        return 'Number(' + var_or_lit_conv(token) + ')'; break;
+        return 'Number(' + var_or_lit_conv(token) + ')';
 
       default: throw new Error("Unsupported function "+func);
     }
@@ -188,7 +186,7 @@
       };
 
       if (JSON && JSON.stringify) {
-        error['data_json'] = JSON.stringify(data);
+        error.data_json = JSON.stringify(data);
       }
 
       errors.push(error);
@@ -233,7 +231,7 @@
       };
 
       if (JSON && JSON.stringify) {
-        error['data_json'] = JSON.stringify(data);
+        error.data_json = JSON.stringify(data);
       }
 
       errors.push(error);
@@ -248,7 +246,7 @@
 
   $.tera.lastError = function() {
     return errors[errors.length - 1];
-  }
+  };
 
   // Получение собственных свойств объекта
   $.tera.keys = Object.keys || (function () {
@@ -310,8 +308,7 @@
     $('script[type="text/template-tera"]').each(function() {
       var id, template, code, func;
 
-      try
-      {
+      try {
         id        = $(this).attr('id');
         template  = $(this).html();
         code      = gen_func_code(template);
@@ -320,8 +317,7 @@
         cache[template] = { func: func, code: code };
         cacheById[id]   = { func: func, code: code, template: template };
       }
-      catch (e)
-      {
+      catch (e) {
         errors.push({
           template: template,
           code:     code,
@@ -331,6 +327,6 @@
         throw e;
       }
     });
-  })
+  });
 
 })(jQuery);
