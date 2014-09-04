@@ -33,7 +33,7 @@
       return $.extend(match, {start: startOffset, end: substringOffset + match.end});
     }
 
-
+    // {tmpl template_name}
     match = matchTemplate(substring);
     if (match !== null) {
       return $.extend(match, {start: startOffset, end: substringOffset + match.end});
@@ -173,11 +173,11 @@
   }
 
   function matchTemplate(string) {
-    var match = /tmpl ([\w-]+)/.exec(string);
+    var match = /^tmpl ([\w-]+)/.exec(string);
     if (match === null) {
       return null;
     }
-    var templateId = match[1]
+    var id = match[1]
       , params = []
       , offset = match[0].length
       , substring = string.substr(offset)
@@ -200,6 +200,10 @@
       offset += match.end;
       substring = substring.substr(match.end);
     }
+    if (end === null) {
+      return null;
+    }
+    return {end: offset, eval: evalTemplate, id: id, params: params};
   }
 
   function matchExpression(string) {
@@ -256,24 +260,12 @@
       return {end: match.end + 2, eval: evalGroup, sub: match};
     }
 
-    match = matchObject(string);
-    if (match !== null) {
-      return match;
-    }
-
-    match = matchFunction(string);
-    if (match !== null) {
-      return match;
-    }
-
-    match = matchVariable(string);
-    if (match !== null) {
-      return match;
-    }
-
-    match = matchString(string);
-    if (match !== null) {
-      return match;
+    var funcs = [matchObject, matchFunction, matchVariable, matchString];
+    for (var funcIndex in funcs) {
+      match = funcs[funcIndex](string);
+      if (match !== null) {
+        return match;
+      }
     }
 
     return matchNumber(string);
@@ -479,10 +471,21 @@
     if (this.index) {result += 'local.' + this.index + '=$i;';}
     return result + 'retval+="';
   }
-  function evalObject() {
-
+  function evalTemplate() {
+    var paramsLen = this.params.length
+      , paramsStr = '';
+    for (var i=0; i<paramsLen; i++) {
+      paramsStr += ',' + this.params[i].eval();
+    }
+    return '"+jQuery.tera.byId("'+this.id+'"'+paramsStr+')+"';
   }
-
+  function evalObject() {
+    var result = [];
+    for (var key in this.object) {
+      result.push(key + ':' + this.object[key].eval());
+    }
+    return '{' + result.join(',') + '}';
+  }
   function evalExpression() {
     var op = this.operands[0]
       , result = op.eval.apply(op, arguments)
