@@ -1,171 +1,541 @@
 // Tera Templates (Konstantin Krylov)
-(function($){
-  var cache     = {};
-  var cacheById = {};
-  var errors    = [];
-
-  // ()x0
-  var keyname_re_part = '[$][ki]';
-
-  // ()x0
-  var varname_re_part = '(?:\\w+|[$][$d]?)(?:[.]\\w+)*';
-
-  // ()x0
-  var complex_varname_re_part = varname_re_part + '(?:[.]\\w+|\\['+varname_re_part+'\\])*';
-
-  // ()x0
-  var digital_re_part = '[+-]?\\d+(?:[.]\\d+)*';
-
-  var string_re_part = "'[^'\\\\]*'";
-
-  //                     1
-  var operand_re_part = '(' + [
-    complex_varname_re_part,
-    keyname_re_part,
-    digital_re_part,
-    string_re_part
-  ].join('|')+')';
-
-  //                               1                 2          3
-  var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])';
-
-  //                                   1
-  var varorkeyname_re = new RegExp('[{]('+keyname_re_part+'|'+complex_varname_re_part+')[}]', 'g');
-
-  var if_re = new RegExp(
-  //      1       2
-      '[{](else-)?(if|if-not|unless)\\s+'
-  //    3 4 5
-      + func_operand_re_part
-  //            6                   7 8 9
-      + '(?:\\s*([<>]=?|[!=]=)\\s*'+func_operand_re_part+')?'
-      + '[}]',
-    'gi');
-
-  //                         1      2       3     4      5         6   7     8      9
-  var if_sub = function(str, elsec, constr, var1, func1, funcvar1, op, var2, func2, funcvar2) {
-    var retval = '";'+(elsec ? '}else ' : '')
-               + 'if('+(constr==='unless'||constr==='if-not'?'!':'')+'('
-               + (var1 ? var_or_lit_conv(var1) : func_var_or_lit_conv(func1, funcvar1));
-    if (op)
-    {
-      retval += ' '+op+' ';
-      retval += var2 ? var_or_lit_conv(var2) : func_var_or_lit_conv(func2, funcvar2);
+(function($) {
+  // Ищем выражение
+  function searchTag(string) {
+    var start = /(\s*)\{(\*?)/.exec(string);
+    // Выражения не найдены
+    if (start === null) {
+       return null;
     }
-    return retval+')){retval+="';
-  };
 
-  //                                 1                2
-  var if_empty_re = new RegExp('[{]if(-not)?-empty\\s+('+complex_varname_re_part+')[}]', 'gi');
+    var substringOffset = start.index + start[0].length
+      , substring       = string.substr(substringOffset)
+      , startOffset     = (start[2] ? 0 : start[1].length) + start.index
+      , match;
 
-  var each_re = new RegExp(
-    //          12     3          4       5          6                   7
-    '[{]each\\s+((\\w+)(\\s+as\\s+(\\w+))?(\\s+at\\s+(\\w+))?\\s+in\\s+)?('+complex_varname_re_part+')[}]', 'gi'
-  );
-
-  //                                1     2               3
-  var escape_re = new RegExp('[{](?:(esc)|(esc-)?json)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
-
-  //                               1              2            3
-  var template_re = new RegExp('[{](esc-)?tmpl\\s+([\\w-]+)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
-
-  var var_conv = function (token) {
-    return token.replace(/(?:[.]|^(?!\$))(\w+)/g, '["$1"]')
-                .replace(/\[(\w+)/g, '[["$1"]')
-                .replace(/^\[|(\[)\[/g, '$1local[');
-  };
-
-  var literal_re = new RegExp('^('+[digital_re_part, string_re_part].join('|')+')$', 'gi');
-
-  var var_or_lit_conv = function(token) {
-    return  literal_re.test(token)
-            ? token
-            : var_conv(token);
-  };
-
-  var func_var_or_lit_conv = function(func, token) {
-    switch (func)
-    {
-      case 'num':
-        return 'Number(' + var_or_lit_conv(token) + ')';
-
-      default: throw new Error("Unsupported function "+func);
+    // Выражение {*} ?
+    if (start[2]) {
+      match = /^\}\s+/.exec(substring);
+      if (match !== null) {
+        return {start: startOffset, end: substringOffset + match[0].length, eval: evalNothing};
+      }
     }
-  };
 
-  var gen_func_code = function(template) {
+    // {each [element[ as key][ at index] in ]array_or_hash}
+    match = matchEach(substring);
+    if (match !== null) {
+      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
+    }
+
+    // {[else-](if[-not]|unless)[-empty|-first|-last] [expr]}
+    match = matchOpenCondition(substring);
+    if (match !== null) {
+      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
+    }
+
+
+    match = matchTemplate(substring);
+    if (match !== null) {
+      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
+    }
+
+    // {else}
+    if (substring.substr(0,4) === 'else') {
+      end = matchTagEnd(substring.substr('else'.length));
+      if (end !== null) {
+        return {start: startOffset, end: substringOffset + 4 + end, eval: evalElse};
+      }
+    }
+
+    // {/(if|unless)}
+    match = /^\/(if|unless)/.exec(substring);
+    if (match !== null) {
+      end = matchTagEnd(substring.substr(match[0].length));
+      if (end !== null) {
+        return {start: startOffset, end: substringOffset + match[0].length + end, eval: evalCloseIf};
+      }
+    }
+
+    // {/each}
+    if (substring.substr(0,5) === '/each') {
+      end = matchTagEnd(substring.substr('/each'.length));
+      if (end !== null) {
+        return {start: startOffset, end: substringOffset + '/each'.length + end, eval: evalCloseEach};
+      }
+    }
+
+    // {var.key[var2.key2[var3]].key4}
+    match = matchVariable(substring);
+    if (match !== null) {
+      end = matchTagEnd(substring.substr(match.end));
+      if (end !== null) {
+        return {start: startOffset, end: substringOffset + match.end + end, eval: evalVariableWrapper, sub: match};
+      }
+    }
+
+    return {start: substringOffset, end: substringOffset, eval: evalNothing};
+  }
+
+  function matchTagEnd(string) {
+    var match = /^(\s*(\*?)\})\s*/.exec(string);
+    if (match === null) {
+      return null;
+    }
+    return match[2] ? match[1].length : match[0].length;
+  }
+
+  function skipSpaces(string) {
+    return /^\s*/.exec(string)[0].length;
+  }
+
+  function matchOpenCondition(string) {
+    //            1       2  3              4 5      6
+    var match = /^(else-)?(if(-not)?|unless)(-(empty|(first|last)))?/.exec(string);
+    if (match === null) {
+      return null;
+    }
+
+    var substringOffset = match[0].length
+      , substring = string.substr(substringOffset)
+      , ifElse = match[1]
+      , invert = match[2] === 'if-not' || match[2] === 'unless'
+      , end, expr;
+
+    if (match[6])
+    {
+      end = matchTagEnd(substring);
+      if (end === null) {
+        return null;
+      }
+      return {end: substringOffset + end, eval: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
+    }
+
+    var spaces = skipSpaces(substring);
+    if (spaces === 0) {
+      return null;
+    }
+
+    substringOffset += spaces;
+    substring = substring.substr(spaces);
+
+    if (match[5] === 'empty')
+    {
+      expr = matchVariable(substring);
+      if (expr === null) {
+        return null;
+      }
+      end = matchTagEnd(substring.substr(expr.end));
+      if (end === null) {
+        return null;
+      }
+      return {end: substringOffset + expr.end + end, eval: evalIfEmpty, invert: invert, ifElse: ifElse, sub: expr};
+    }
+
+    expr = matchExpression(substring);
+    if (expr === null) {
+      return null;
+    }
+    end = matchTagEnd(substring.substr(expr.end));
+    if (end === null) {
+      return null;
+    }
+    return {end: substringOffset + expr.end + end, eval: evalIf, invert: invert, ifElse: ifElse, sub: expr};
+  }
+
+  function matchEach(string) {
+    //                1   2          3        4            5        6
+    var match = /^each(\s+((?!\d)\w+)(\s+as\s+((?!\d)\w+))?(\s+at\s+((?!\d)\w+))? in)?/.exec(string);
+    if (match === null) {
+      return null;
+    }
+    var elem = match[2]
+      , key = match[4]
+      , index = match[6]
+      , substringOffset = match[0].length
+      , substring = string.substr(substringOffset)
+      , spaces = skipSpaces(substring);
+    if (spaces === 0) {
+      return null;
+    }
+    substringOffset += spaces;
+    substring = substring.substr(spaces);
+    match = matchVariable(substring);
+    if (match === null) {
+      return null;
+    }
+    substringOffset += match.end;
+    substring = substring.substr(match.end);
+    end = matchTagEnd(substring);
+    if (end === null) {
+      return null;
+    }
+    return {end: substringOffset + end, eval: evalEach, sub: match, elem: elem, key: key, index: index};
+  }
+
+  function matchTemplate(string) {
+    var match = /tmpl ([\w-]+)/.exec(string);
+    if (match === null) {
+      return null;
+    }
+    var templateId = match[1]
+      , params = []
+      , offset = match[0].length
+      , substring = string.substr(offset)
+      , end;
+
+    while (true) {
+      end = matchTagEnd(substring);
+      if (end !== null) {
+        offset += end;
+        break;
+      }
+      var spaces = skipSpaces(substring);
+      offset += spaces;
+      substring = substring.substr(spaces);
+      match = matchExpression(substring);
+      if (match === null) {
+        return null;
+      }
+      params.push(match);
+      offset += match.end;
+      substring = substring.substr(match.end);
+    }
+  }
+
+  function matchExpression(string) {
+    var match = matchGroup(string);
+    if (match === null) {
+      return null;
+    }
+
+    var substringOffset = match.end
+      , substring = string.substr(substringOffset);
+
+    var operands = [match], operators = [];
+
+    while (true) {
+      var opOffset = skipSpaces(substring)
+        , opMatch = matchOperator(substring.substr(opOffset));
+      if (opMatch === null) {
+        break;
+      }
+
+      opOffset += opMatch.end;
+      opOffset += skipSpaces(substring.substr(opOffset));
+      match = matchGroup(substring.substr(opOffset));
+      if (match === null) {
+        break;
+      }
+      opOffset += match.end;
+
+      operators.push(opMatch.name);
+      operands.push(match);
+
+      substringOffset += opOffset;
+      substring = substring.substr(opOffset);
+    }
+
+    return {end: substringOffset, eval: evalExpression, operators: operators, operands: operands};
+  }
+
+  function matchOperator(string) {
+    var match = /^([!=><]=|&&|\|\||\+|\-)/.exec(string);
+    return match === null ? null : {end: match[0].length, name: match[0]};
+  }
+
+  function matchGroup(string) {
+    var match;
+    if (string.substr(0, 1) === '(') {
+      match = matchExpression(string.substr(1));
+      if (match !== null) {
+        return null;
+      }
+      if (string.substr(match.end + 1, 1) !== ')') {
+        return null;
+      }
+      return {end: match.end + 2, eval: evalGroup, sub: match};
+    }
+
+    match = matchObject(string);
+    if (match !== null) {
+      return match;
+    }
+
+    match = matchFunction(string);
+    if (match !== null) {
+      return match;
+    }
+
+    match = matchVariable(string);
+    if (match !== null) {
+      return match;
+    }
+
+    match = matchString(string);
+    if (match !== null) {
+      return match;
+    }
+
+    return matchNumber(string);
+  }
+
+  function matchFunction(string) {
+    var match = /^(\w+)\(/.exec(string);
+    if (match === null) {
+      return null;
+    }
+    var name = match[1]
+      , args = []
+      , substringOffset = match[0].length
+      , substring = string.substr(substringOffset);
+    if (substring.substr(0, 1) === ')')
+    {
+      return {end: substringOffset+1, name: name, args: args};
+    }
+    match = matchExpression(substring);
+    if (match === null) {
+      return null;
+    }
+    args.push(match);
+    substringOffset += match.end;
+    substring = substring.substr(match.end);
+
+    while (true) {
+      var nextChar = substring.substr(0,1);
+      if (nextChar === ')') {
+        break;
+      }
+      if (nextChar !== ',') {
+        return null;
+      }
+      var argOffset = 1;
+      argOffset += skipSpaces(substring.substr(argOffset));
+      match = matchExpression(substring.substr(argOffset));
+      if (match === null) {
+        return null;
+      }
+      argOffset += match.end;
+      substringOffset += argOffset;
+      substring = substring.substr(argOffset);
+    }
+    return {end: substringOffset+1, eval: evalFunction, name: name, args: args};
+  }
+
+  function matchString(string) {
+    var match = /^'([^']*)'/.exec(string);
+    if (match === null) {
+      return match;
+    }
+    return {end: match[0].length, eval: evalString, string: match[1]};
+  }
+
+  function matchNumber(string) {
+    var match = /^(-?)(\d+|0)(.\d+)?/.exec(string);
+    if (match === null) {
+      return null;
+    }
+    return {end: match[0].length, eval: evalNumber, number: match[0]};
+  }
+
+  function matchVariable(string) {
+    var match = /^(\$(keys|[$ikld]|)|(?!\d)\w+)/.exec(string);
+    if (match === null) {
+      return null;
+    }
+
+    var substringOffset = match[0].length
+      , name = match[1]
+      , sub = matchSubvariable(string.substr(substringOffset));
+
+    if (sub !== null) {
+      return {end: substringOffset + sub.end, eval: evalVariable, name: name, sub: sub};
+    }
+
+    return {end: substringOffset, eval: evalVariable, name: name}
+  }
+
+  function matchSubvariable(string) {
+    var match = /^\.((?=[^\d])\w+)/.exec(string);
+    if (match === null) {
+      return matchVariableComponent(string);
+    }
+
+    var substringOffset = match[0].length
+      , name = match[1]
+      , sub = matchSubvariable(string.substr(substringOffset));
+
+    if (sub !== null) {
+      return {end: substringOffset + sub.end, eval: evalSubvariable, name: name, sub: sub};
+    }
+
+    return {end: substringOffset, eval: evalSubvariable, name: name};
+  }
+
+  function matchVariableComponent(string) {
+    if (string.substr(0,1) !== '[') {
+      return null;
+    }
+
+    var inner = matchVariable(string.substr(1));
+    if (inner === null) {
+      return null;
+    }
+    if (string.substr(1 + inner.end, 1) !== ']') {
+      return null;
+    }
+    var substringOffset = 2 + inner.end
+      , sub = matchSubvariable(string.substr(substringOffset));
+
+    if (sub !== null) {
+      return {end: substringOffset + sub.end, eval: evalVariableComponent, inner: inner, sub: sub};
+    }
+
+    return {end: substringOffset, eval: evalVariableComponent, inner: inner};
+  }
+
+  function matchObject(string) {
+    if (string.substr(0,1) !== '{') {
+      return null;
+    }
+    var offset = 1
+      , substring = string.substr(1)
+      , obj = {};
+    while (true) {
+      var keyMatch = /^\s+(\w+)\s+:\s+/.exec();
+      if (keyMatch === null) {
+        return null;
+      }
+      var key = keyMatch[1]
+        , end = keyMatch[0].length;
+      offset += end;
+      substring = substring.substr(end);
+      var expr = matchExpression(substring);
+      if (expr === null) {
+        return null;
+      }
+      obj[key] = expr;
+      offset += expr.end;
+      substring = substring.substr(expr.end);
+      var spaces = skipSpaces(substring);
+      offset += spaces;
+      substring = substring.substr(spaces);
+      var nextChar = substring.substr(0,1);
+      if (nextChar === '}') {
+        offset += 1;
+        substring = substring.substr(1);
+        break;
+      }
+      if (nextChar !== ',') {
+        return null;
+      }
+      offset += 1;
+      substring = substring.substr(1);
+    }
+
+    return {end: offset, eval: evalObject, object: obj}
+  }
+
+  function evalNothing()            { return ''; }
+  function evalVariableWrapper()    { return '" + ' + this.sub.eval.apply(this.sub, arguments) + ' + "'; }
+  function evalVariable()           { return (/^\$/.test(this.name) ? this.name : 'local.' + this.name) + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
+  function evalSubvariable()        { return '.' + this.name + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
+  function evalVariableComponent()  { return '[' + this.inner.eval.apply(this.inner, arguments) + ']' + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
+  function evalGroup()              { return '(' + this.sub.eval.apply(this.sub, arguments) + ')'; }
+  function evalString()             { return "'" + this.string + "'"; }
+  function evalNumber()             { return this.number; }
+
+  function evalElse()               { return '";}else{retval+="'; }
+  function evalCloseIf()            { return '"}retval+="'; }
+  function evalCloseEach()          { return '";$i++}}).call(this,$it);retval+="'; }
+
+  function evalIfFirstOrLast() {
+    return '";' + (this.ifElse ? '}else ' : '')
+      + 'if($i' + (this.invert ? '!=' : '==')
+      + (this.pos == 'first' ? '0' : '$l-1')
+      + '){retval+="';
+  }
+  function evalIfEmpty() {
+    return '";' + (this.ifElse ? '}else ' : '')
+      + 'if($t=' + this.sub.eval.apply(this.sub, arguments) + ','
+      + (this.invert ? '!' : '')+'('
+      + 'jQuery.isArray($t)&&$t.length===0||jQuery.isEmptyObject($t)'
+      + ')){retval+="';
+  }
+  function evalIf() {
+    return '";' + (this.ifElse ? '}else ' : '')
+      + 'if(' + (this.invert ? '!' : '')
+      + '(' + this.sub.eval.apply(this.sub, arguments)
+      + ')){retval+="';
+  }
+  function evalEach() {
+    var result
+      = '";$it=' + this.sub.eval.apply(this.sub, arguments) + ';(function($$){'
+      + 'var $,$k,$keys,'
+      + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
+      + 'while($i<$l){'
+      + '$=(($k=$keys?$keys[$i]:$i),$$[$k]);';
+    if (this.elem)  {result += 'local.' + this.elem + '=$;';}
+    if (this.key)   {result += 'local.' + this.key + '=$k;';}
+    if (this.index) {result += 'local.' + this.index + '=$i;';}
+    return result + 'retval+="';
+  }
+  function evalObject() {
+
+  }
+
+  function evalExpression() {
+    var op = this.operands[0]
+      , result = op.eval.apply(op, arguments)
+      , c = this.operators.length;
+    for (var i=0; i<c; i++) {
+      op = this.operands[i+1];
+      result += this.operators[i] + op.eval.apply(op, arguments);
+    }
+    return result;
+  }
+  function evalFunction() {
+    var args = '', argCount = this.args.length;
+    if (argCount > 0) {
+      args += this.args[0].eval.apply(this.args[0], arguments);
+      for (var i=1; i<argCount; i++) {
+        args += ',' + this.args[i].eval.apply(this.args[i], arguments);
+      }
+    }
+    return this.name + '(' + args + ')';
+  }
+
+  function gen_func_code(template) {
+    var result = '', expr;
+    while (expr = searchTag(template))
+    {
+      result += escString(template.substr(0, expr.start)) + expr.eval();
+      template = template.substr(expr.end);
+    }
+    result += escString(template);
+
     return ''
             // Копируем данные в новый объект или массив,
             // чтобы не затереть данные при определнии переменных в шаблоне
             + 'var local=(typeof data==="object")'
               + '?jQuery.extend(jQuery.isArray(data)?[]:{},data)'
               + ':data,'
-            + '$=local,$d=attrData,$it,'
-            + 'retval="'
-            + template
-              // escapes quotes and backslash
-              .replace(/\\/g, '\\\\').replace(/"/g,  '\\"')
-              // {each val as key in key.array}
-              .replace(each_re, function(str, a1, val, a3, key, a5, ind, arr) {
-                var retval = '";$it='+var_conv(arr)+';(function($$){'
-                  + 'var $,$k,$keys,'
-                      + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
-                  + 'while($i<$l){'
-                    + '$=(($k=$keys?$keys[$i]:$i),$$[$k]);';
-                if (val) {retval += 'local["'+val+'"]=$;';}
-                if (key) {retval += 'local["'+key+'"]=$k;';}
-                if (ind) {retval += 'local["'+ind+'"]=$i;';}
-                retval += 'retval+="';
-                return retval;
-              })
-              // {/each}
-              .replace(/[{][/]each[}]/gi, '";$i++}}).call(this,$it);retval+="')
-              // {if[-not]|unless key.subkey[ op key.subkey]}
-              .replace(if_re, if_sub)
-              // {if-empty key.array}
-              .replace(if_empty_re, function(str, not, arr) {
-                var converted_var = var_conv(arr);
-                return '";if('+(not?'!':'')+'('
-                    +'jQuery.isArray('+converted_var+')&&'+converted_var+'.length===0||jQuery.isEmptyObject('+converted_var+')'
-                  +')){retval+="';
-              })
-              // {if-first}, {if-last}, {unless-first}, {unless-last}, {if-not-first}, {if-not-last}
-              .replace(/[{](?:if(-not)?|(unless))-(first|last)[}]/gi, function (str, not, unless, forl) {
-                return '";if($i'
-                  + (not || unless ? '!=' : '==')
-                  + (forl == 'first' ? '0' : '$l-1')
-                  + '){retval+="';
-              })
-              // {/if|unless}
-              .replace(/[{][/](if|unless)[}]/gi, '"}retval+="')
-              // {else}
-              .replace(/[{]else[}]/gi, '"}else{retval+="')
-              // {esc|[esc-]json var} - to stringify or to escape HTML spec characters or both
-              .replace(escape_re, function(str, esc, escJson, varname) {
-                return '"+' + (esc || escJson ? 'this.escape(' : '')
-                            + (!esc ? 'this.json(' : '') + var_conv(varname)
-                            + (!esc && escJson ? ')' : '') + ')+"';
-              })
-              // {[esc-]tmpl id var} - to substitute another template
-              .replace(template_re, function(str, esc, id, varname) {
-                return '"+' + (esc ? 'this.escape(' : '')
-                            + 'this.byId("'+id+'",'+var_conv(varname)+')'
-                            + (esc ? ')' : '') + '+"';
-              })
-              // {var[.key[.subkey]]}
-              .replace(varorkeyname_re, function(str, varname) {
-                return '"+'+var_conv(varname)+'+"';
-              })
-              // "{", "}"
-              .replace(/[{]([{}])[}]/g, '$1')
-              // {*} - means that space being around shall be erased
-              .replace(/\s*[{]([*])[}]\s*/g, '')
-              // Tabs, new lines etc.
-              .replace(/\n/g, '\\n')
-              .replace(/\t/g, '\\t')
-              .replace(/\r/g, '\\r')
+            + '$=local,$d=attrData,$it,$t,retval="'
+            + result
             + '"; return retval';
   };
+
+  function escString(string) {
+    return string
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g,  '\\"')
+      .replace(/\n/g, '\\n')
+      .replace(/\t/g, '\\t')
+      .replace(/\r/g, '\\r');
+  }
+
+  var cache     = {};
+  var cacheById = {};
+  var errors    = [];
 
   $.tera = function(template, data) {
     var code;
@@ -179,14 +549,14 @@
     }
     catch (e) {
       var error = {
-        template: template,
-        code:     cache[template].code,
-        data:     $.extend(true, {}, data),
-        error:    e.message
+        template: template
+        , code:     cache[template].code
+        , data:     $.extend(true, {}, data)
+        , error:    e.message
       };
 
       if (JSON && JSON.stringify) {
-        error.data_json = JSON.stringify(data);
+        error['data_json'] = JSON.stringify(data);
       }
 
       errors.push(error);
@@ -224,14 +594,14 @@
     }
     catch (e) {
       var error = {
-        template: cacheById[id] && cacheById[id].template,
-        code:     cacheById[id] && cacheById[id].code,
-        data:     $.extend(true, {}, data),
-        error:    e.message
+        template: cacheById[id] && cacheById[id].template
+        , code:   cacheById[id] && cacheById[id].code
+        , data:   $.extend(true, {}, data)
+        , error:  e.message
       };
 
       if (JSON && JSON.stringify) {
-        error.data_json = JSON.stringify(data);
+        error['data_json'] = JSON.stringify(data);
       }
 
       errors.push(error);
@@ -246,7 +616,7 @@
 
   $.tera.lastError = function() {
     return errors[errors.length - 1];
-  };
+  }
 
   // Получение собственных свойств объекта
   $.tera.keys = Object.keys || (function () {
@@ -254,13 +624,13 @@
     var hasOwnProperty = Object.prototype.hasOwnProperty,
       hasDontEnumBug = !({toString: null}).propertyIsEnumerable('toString'),
       dontEnums = [
-        'toString',
-        'toLocaleString',
-        'valueOf',
-        'hasOwnProperty',
-        'isPrototypeOf',
-        'propertyIsEnumerable',
-        'constructor'
+        'toString'
+        , 'toLocaleString'
+        , 'valueOf'
+        , 'hasOwnProperty'
+        , 'isPrototypeOf'
+        , 'propertyIsEnumerable'
+        , 'constructor'
       ],
       dontEnumsLength = dontEnums.length;
 
@@ -308,7 +678,8 @@
     $('script[type="text/template-tera"]').each(function() {
       var id, template, code, func;
 
-      try {
+      try
+      {
         id        = $(this).attr('id');
         template  = $(this).html();
         code      = gen_func_code(template);
@@ -317,16 +688,16 @@
         cache[template] = { func: func, code: code };
         cacheById[id]   = { func: func, code: code, template: template };
       }
-      catch (e) {
+      catch (e)
+      {
         errors.push({
-          template: template,
-          code:     code,
-          error:    e.message
+          template: template
+          , code:   code
+          , error:  e.message
         });
 
         throw e;
       }
     });
-  });
-
+  })
 })(jQuery);

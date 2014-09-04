@@ -18,6 +18,7 @@
               <td>{$.name}</td>
             {/each}
           </tr>
+          {*}
           {each station in stations}
             <tr>
               <td>{$.name}</td>
@@ -64,6 +65,13 @@
             'Волга': ['Санкт-Петербург', 'Москва', 'Нижний Новгород']
           }
         };
+
+        var i = 10000, time = new Date;
+        while (i-->0)
+        {
+          $.tera.byId('distance_table_template', data);
+        }
+        console.log(new Date - time);
         $('#distance_table').html($.tera.byId('distance_table_template', data));
       });
     </script>
