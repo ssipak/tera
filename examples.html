@@ -3,13 +3,13 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Tera Templates Examples</title>
-    <script type="text/javascript" src="http://code.jquery.com/jquery.min.js"></script>
+    <script type="text/javascript" src="jquery-1.8.3.min.js"></script>
     <script type="text/javascript" src="jquery.tera.js"></script>
   </head>
   <body>
     <div id="distance_table">
       <script type="text/template-tera" id="distance_table_template" data-copyright="Ssipak co">
-        <h1>{esc title}</h1>
+        <h1>{title}</h1>
         <h2>{tmpl train_list_template trains}</h2>
         <table>
           <tr>
@@ -24,10 +24,12 @@
               <td>{$.name}</td>
               {each stations}
                 <td>
-                  {if distance[$.id][station.id] == ''}
-                    &mdash;
-                  {else}
+                  {if distance[$.id][station.id]}
                     {distance[$.id][station.id]}
+                  {else-if distance[station.id][$.id]}
+                    {distance[station.id][$.id]}
+                  {else}
+                    &mdash;
                   {/if}
                 </td>
               {/each}
@@ -55,9 +57,9 @@
             {name: 'Париж',       id: 'pa'}
           ],
           distance: {
-            vl: {vl: 0,       ny: 10329.3, pa: 8671.6},
-            ny: {vl: 10329.3, ny: 0,       pa: 5850.3},
-            pa: {vl: 8671.6,  ny: 5850.3,  pa: 0}
+            vl: {ny: 10329.3, pa: 8671.6},
+            ny: {pa: 5850.3},
+            pa: {}
           },
           trains: {
             'Россия': ['Москва', 'Екатеринбург', 'Новосибирск', 'Иркутск', 'Владивосток'],

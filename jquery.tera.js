@@ -64,12 +64,19 @@
       }
     }
 
+    // {raw var}
+    match = matchRawVariable(substring);
+    if (match !== null)
+    {
+      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
+    }
+
     // {var.key[var2.key2[var3]].key4}
     match = matchVariable(substring);
     if (match !== null) {
       end = matchTagEnd(substring.substr(match.end));
       if (end !== null) {
-        return {start: startOffset, end: substringOffset + match.end + end, eval: evalVariableWrapper, sub: match};
+        return {start: startOffset, end: substringOffset + match.end + end, eval: evalVariableInsert, sub: match};
       }
     }
 
@@ -385,6 +392,27 @@
     return {end: substringOffset, eval: evalVariableComponent, inner: inner};
   }
 
+  function matchRawVariable(string) {
+    if (string.substr(0,3) !== 'raw') {
+      return null;
+    }
+    var spaces = skipSpaces(string.substr(3));
+    if (spaces < 1) {
+      return null;
+    }
+    var offset = 3 + spaces
+    var variable = matchVariable(string.substr(offset));
+    if (variable === null) {
+      return null;
+    }
+    offset += variable.end;
+    var end = matchTagEnd(string.substr(offset));
+    if (end === null) {
+      return null;
+    }
+    return {end: offset + end,  eval: evalRawVariableInsert, sub: variable};
+  }
+
   function matchObject(string) {
     if (string.substr(0,1) !== '{') {
       return null;
@@ -428,7 +456,8 @@
   }
 
   function evalNothing()            { return ''; }
-  function evalVariableWrapper()    { return '" + ' + this.sub.eval.apply(this.sub, arguments) + ' + "'; }
+  function evalVariableInsert()     { return '"+jQuery.tera.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
+  function evalRawVariableInsert()  { return '"+' + this.sub.eval.apply(this.sub, arguments) + '+"'; }
   function evalVariable()           { return (/^\$/.test(this.name) ? this.name : 'local.' + this.name) + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
   function evalSubvariable()        { return '.' + this.name + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
   function evalVariableComponent()  { return '[' + this.inner.eval.apply(this.inner, arguments) + ']' + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
@@ -463,7 +492,7 @@
     var result
       = '";$it=' + this.sub.eval.apply(this.sub, arguments) + ';(function($$){'
       + 'var $,$k,$keys,'
-      + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
+      + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=jQuery.tera.keys($$),$keys.length);'
       + 'while($i<$l){'
       + '$=(($k=$keys?$keys[$i]:$i),$$[$k]);';
     if (this.elem)  {result += 'local.' + this.elem + '=$;';}
@@ -475,14 +504,16 @@
     var paramsLen = this.params.length
       , paramsStr = '';
     for (var i=0; i<paramsLen; i++) {
-      paramsStr += ',' + this.params[i].eval();
+      var param = this.params[i];
+      paramsStr += ',' + param.eval.apply(param, arguments);
     }
-    return '"+jQuery.tera.byId("'+this.id+'"'+paramsStr+')+"';
+    return '"+jQuery.tera.byId("' + this.id + '"' + paramsStr + ')+"';
   }
   function evalObject() {
     var result = [];
     for (var key in this.object) {
-      result.push(key + ':' + this.object[key].eval());
+      var property = this.object[key];
+      result.push(key + ':' + property.eval.apply(property, arguments));
     }
     return '{' + result.join(',') + '}';
   }
@@ -497,14 +528,12 @@
     return result;
   }
   function evalFunction() {
-    var args = '', argCount = this.args.length;
-    if (argCount > 0) {
-      args += this.args[0].eval.apply(this.args[0], arguments);
-      for (var i=1; i<argCount; i++) {
-        args += ',' + this.args[i].eval.apply(this.args[i], arguments);
-      }
+    var args = [], argCount = this.args.length;
+    for (var i=0; i<argCount; i++) {
+      var arg = this.args[i];
+      args.push(arg.eval.apply(arg, arguments));
     }
-    return this.name + '(' + args + ')';
+    return this.name + '(' + args.join(',') + ')';
   }
 
   function gen_func_code(template) {
@@ -661,7 +690,7 @@
 
   // Экранирование специальных символов HTML
   $.tera.escape = function(str) {
-    return str.replace(/[&<'"]/g, function(match) {
+    return (''+str).replace(/[&<'"]/g, function(match) {
       switch(match[0])
       {
         case '&': return '&amp;';
