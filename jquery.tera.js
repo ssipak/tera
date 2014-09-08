@@ -1,5 +1,18 @@
 // Tera Templates (Konstantin Krylov)
 (function($) {
+  var STATEMENTS = [
+        generateMatchPrefix(/^else/,          evalElse),
+        generateMatchPrefix(/^\/(if|unless)/, evalCloseIf),
+        generateMatchPrefix(/^\/each/,        evalCloseEach),
+
+        matchEach,          // {each [element[ as key][ at index] in ]array_or_hash}
+        matchOpenCondition, // {[else-](if[-not]|unless)[-empty|-first|-last] [expr]}
+        matchTemplate,      // {tmpl template_name}
+        matchRawVariable,   // {raw var}
+        matchEscVariable    // {var.key[var2.key2[var3]].key4}
+      ]
+    , STATEMENTS_COUNT = STATEMENTS.length;
+
   // Ищем выражение
   function searchTag(string) {
     var start = /(\s*)\{(\*?)/.exec(string);
@@ -21,62 +34,12 @@
       }
     }
 
-    // {each [element[ as key][ at index] in ]array_or_hash}
-    match = matchEach(substring);
-    if (match !== null) {
-      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
-    }
-
-    // {[else-](if[-not]|unless)[-empty|-first|-last] [expr]}
-    match = matchOpenCondition(substring);
-    if (match !== null) {
-      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
-    }
-
-    // {tmpl template_name}
-    match = matchTemplate(substring);
-    if (match !== null) {
-      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
-    }
-
-    // {else}
-    if (substring.substr(0,4) === 'else') {
-      end = matchTagEnd(substring.substr('else'.length));
-      if (end !== null) {
-        return {start: startOffset, end: substringOffset + 4 + end, eval: evalElse};
-      }
-    }
-
-    // {/(if|unless)}
-    match = /^\/(if|unless)/.exec(substring);
-    if (match !== null) {
-      end = matchTagEnd(substring.substr(match[0].length));
-      if (end !== null) {
-        return {start: startOffset, end: substringOffset + match[0].length + end, eval: evalCloseIf};
-      }
-    }
-
-    // {/each}
-    if (substring.substr(0,5) === '/each') {
-      end = matchTagEnd(substring.substr('/each'.length));
-      if (end !== null) {
-        return {start: startOffset, end: substringOffset + '/each'.length + end, eval: evalCloseEach};
-      }
-    }
-
-    // {raw var}
-    match = matchRawVariable(substring);
-    if (match !== null)
-    {
-      return $.extend(match, {start: startOffset, end: substringOffset + match.end});
-    }
-
-    // {var.key[var2.key2[var3]].key4}
-    match = matchVariable(substring);
-    if (match !== null) {
-      end = matchTagEnd(substring.substr(match.end));
-      if (end !== null) {
-        return {start: startOffset, end: substringOffset + match.end + end, eval: evalVariableInsert, sub: match};
+    for (var stmtInd=0; stmtInd<STATEMENTS_COUNT; stmtInd++) {
+      match = STATEMENTS[stmtInd](substring);
+      if (match !== null) {
+        match.start = startOffset;
+        match.end   += substringOffset;
+        return match;
       }
     }
 
@@ -179,6 +142,21 @@
     return {end: substringOffset + end, eval: evalEach, sub: match, elem: elem, key: key, index: index};
   }
 
+  function generateMatchPrefix(prefixRegExp, eval)
+  {
+    return function(string) {
+      var match = prefixRegExp.exec(string);
+      if (match === null) {
+        return null;
+      }
+      var end = matchTagEnd(string.substr(match[0].length));
+      if (end === null) {
+        return null;
+      }
+      return {end: match[0].length + end, eval: eval};
+    };
+  }
+
   function matchTemplate(string) {
     var match = /^tmpl ([\w-]+)/.exec(string);
     if (match === null) {
@@ -211,6 +189,39 @@
       return null;
     }
     return {end: offset, eval: evalTemplate, id: id, params: params};
+  }
+
+  function matchRawVariable(string) {
+    if (string.substr(0,3) !== 'raw') {
+      return null;
+    }
+    var spaces = skipSpaces(string.substr(3));
+    if (spaces < 1) {
+      return null;
+    }
+    var offset = 3 + spaces
+    var variable = matchVariable(string.substr(offset));
+    if (variable === null) {
+      return null;
+    }
+    offset += variable.end;
+    var end = matchTagEnd(string.substr(offset));
+    if (end === null) {
+      return null;
+    }
+    return {end: offset + end,  eval: evalRawVariableInsert, sub: variable};
+  }
+
+  function matchEscVariable(string) {
+    match = matchVariable(string);
+    if (match === null) {
+      return null;
+    }
+    end = matchTagEnd(string.substr(match.end));
+    if (end === null) {
+      return null;
+    }
+    return {end: match.end + end, eval: evalVariableInsert, sub: match};
   }
 
   function matchExpression(string) {
@@ -390,27 +401,6 @@
     }
 
     return {end: substringOffset, eval: evalVariableComponent, inner: inner};
-  }
-
-  function matchRawVariable(string) {
-    if (string.substr(0,3) !== 'raw') {
-      return null;
-    }
-    var spaces = skipSpaces(string.substr(3));
-    if (spaces < 1) {
-      return null;
-    }
-    var offset = 3 + spaces
-    var variable = matchVariable(string.substr(offset));
-    if (variable === null) {
-      return null;
-    }
-    offset += variable.end;
-    var end = matchTagEnd(string.substr(offset));
-    if (end === null) {
-      return null;
-    }
-    return {end: offset + end,  eval: evalRawVariableInsert, sub: variable};
   }
 
   function matchObject(string) {
