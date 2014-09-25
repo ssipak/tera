@@ -288,7 +288,7 @@
 
   // Экранирование специальных символов HTML
   $.tera.escape = function(str) {
-    return str.replace(/[&<'"]/g, function(match) {
+    return (''+str).replace(/[&<'"]/g, function(match) {
       switch(match[0])
       {
         case '&': return '&amp;';
