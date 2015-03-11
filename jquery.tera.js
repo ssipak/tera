@@ -29,6 +29,9 @@
   //                               1                 2          3
   var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])';
 
+
+  //                                1 2 3
+  var func_re = new RegExp('[{]=' + func_operand_re_part + '[}]', 'g');
   //                                   1
   var varorkeyname_re = new RegExp('[{]('+keyname_re_part+'|'+complex_varname_re_part+')[}]', 'g');
 
@@ -88,9 +91,9 @@
     {
       case 'num':
         return 'Number(' + var_or_lit_conv(token) + ')';
-
-      default: throw new Error("Unsupported function "+func);
     }
+    // По просьбам трудящихся костыль - поддержка всех глобальных функций
+    return func + '(' + var_or_lit_conv(token) + ')';
   };
 
   var gen_func_code = function(template) {
@@ -151,6 +154,9 @@
                 return '"+' + (esc ? 'this.escape(' : '')
                             + 'this.byId("'+id+'",'+var_conv(varname)+')'
                             + (esc ? ')' : '') + '+"';
+              })
+              .replace(func_re, function(str, vari, func, funcvari) {
+                return '"+' + (var1 ? var_or_lit_conv(var1) : func_var_or_lit_conv(func, funcvari)) + '+"';
               })
               // {var[.key[.subkey]]}
               .replace(varorkeyname_re, function(str, varname) {
