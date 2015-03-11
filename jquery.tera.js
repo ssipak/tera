@@ -156,7 +156,7 @@
                             + (esc ? ')' : '') + '+"';
               })
               .replace(func_re, function(str, vari, func, funcvari) {
-                return '"+' + (var1 ? var_or_lit_conv(var1) : func_var_or_lit_conv(func, funcvari)) + '+"';
+                return '"+' + (vari ? var_or_lit_conv(vari) : func_var_or_lit_conv(func, funcvari)) + '+"';
               })
               // {var[.key[.subkey]]}
               .replace(varorkeyname_re, function(str, varname) {
