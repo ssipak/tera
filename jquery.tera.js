@@ -16,10 +16,7 @@
   // Ищем выражение
   function searchTag(string) {
     var start = /(\s*)\{(\*?)/.exec(string);
-    // Выражения не найдены
-    if (start === null) {
-       return null;
-    }
+    if (start === null) return null;
 
     var substringOffset = start.index + start[0].length
       , substring       = string.substr(substringOffset)
@@ -29,9 +26,7 @@
     // Выражение {*} ?
     if (start[2]) {
       match = /^\}\s+/.exec(substring);
-      if (match !== null) {
-        return {start: startOffset, end: substringOffset + match[0].length, eval: evalNothing};
-      }
+      if (match !== null) return {start: startOffset, end: substringOffset + match[0].length, eval: evalNothing};
     }
 
     for (var stmtInd=0; stmtInd<STATEMENTS_COUNT; stmtInd++) {
@@ -48,9 +43,7 @@
 
   function matchTagEnd(string) {
     var match = /^(\s*(\*?)\})\s*/.exec(string);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
     return match[2] ? match[1].length : match[0].length;
   }
 
@@ -61,84 +54,64 @@
   function matchOpenCondition(string) {
     //            1       2  3              4 5      6
     var match = /^(else-)?(if(-not)?|unless)(-(empty|(first|last)))?/.exec(string);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
 
     var substringOffset = match[0].length
-      , substring = string.substr(substringOffset)
-      , ifElse = match[1]
-      , invert = match[2] === 'if-not' || match[2] === 'unless'
+      , substring       = string.substr(substringOffset)
+      , ifElse          = match[1]
+      , invert          = match[2] === 'if-not' || match[2] === 'unless'
       , end, expr;
 
-    if (match[6])
-    {
+    if (match[6]) {
       end = matchTagEnd(substring);
-      if (end === null) {
-        return null;
-      }
+      if (end === null) return null;
       return {end: substringOffset + end, eval: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
     }
 
     var spaces = skipSpaces(substring);
-    if (spaces === 0) {
-      return null;
-    }
+    if (spaces === 0) return null;
 
     substringOffset += spaces;
     substring = substring.substr(spaces);
 
-    if (match[5] === 'empty')
-    {
+    if (match[5] === 'empty') {
       expr = matchVariable(substring);
-      if (expr === null) {
-        return null;
-      }
+      if (expr === null) return null;
       end = matchTagEnd(substring.substr(expr.end));
-      if (end === null) {
-        return null;
-      }
+      if (end === null) return null;
       return {end: substringOffset + expr.end + end, eval: evalIfEmpty, invert: invert, ifElse: ifElse, sub: expr};
     }
 
     expr = matchExpression(substring);
-    if (expr === null) {
-      return null;
-    }
+    if (expr === null) return null;
     end = matchTagEnd(substring.substr(expr.end));
-    if (end === null) {
-      return null;
-    }
+    if (end === null) return null;
     return {end: substringOffset + expr.end + end, eval: evalIf, invert: invert, ifElse: ifElse, sub: expr};
   }
 
   function matchEach(string) {
     //                1   2          3        4            5        6
     var match = /^each(\s+((?!\d)\w+)(\s+as\s+((?!\d)\w+))?(\s+at\s+((?!\d)\w+))? in)?/.exec(string);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
+
     var elem = match[2]
       , key = match[4]
       , index = match[6]
       , substringOffset = match[0].length
       , substring = string.substr(substringOffset)
       , spaces = skipSpaces(substring);
-    if (spaces === 0) {
-      return null;
-    }
+    if (spaces === 0) return null;
+
     substringOffset += spaces;
     substring = substring.substr(spaces);
     match = matchVariable(substring);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
+
     substringOffset += match.end;
     substring = substring.substr(match.end);
-    end = matchTagEnd(substring);
-    if (end === null) {
-      return null;
-    }
+    var end = matchTagEnd(substring);
+    if (end === null) return null;
+
     return {end: substringOffset + end, eval: evalEach, sub: match, elem: elem, key: key, index: index};
   }
 
@@ -146,22 +119,16 @@
   {
     return function(string) {
       var match = prefixRegExp.exec(string);
-      if (match === null) {
-        return null;
-      }
+      if (match === null) return null;
       var end = matchTagEnd(string.substr(match[0].length));
-      if (end === null) {
-        return null;
-      }
+      if (end === null) return null;
       return {end: match[0].length + end, eval: eval};
     };
   }
 
   function matchTemplate(string) {
     var match = /^tmpl ([\w-]+)/.exec(string);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
     var id = match[1]
       , params = []
       , offset = match[0].length
@@ -178,78 +145,59 @@
       offset += spaces;
       substring = substring.substr(spaces);
       match = matchExpression(substring);
-      if (match === null) {
-        return null;
-      }
+      if (match === null) return null;
+
       params.push(match);
       offset += match.end;
       substring = substring.substr(match.end);
     }
-    if (end === null) {
-      return null;
-    }
+    if (end === null) return null;
     return {end: offset, eval: evalTemplate, id: id, params: params};
   }
 
   function matchRawVariable(string) {
-    if (string.substr(0,3) !== 'raw') {
-      return null;
-    }
+    if (string.substr(0,3) !== 'raw') return null;
     var spaces = skipSpaces(string.substr(3));
-    if (spaces < 1) {
-      return null;
-    }
+    if (spaces < 1) return null;
+
     var offset = 3 + spaces
-    var variable = matchVariable(string.substr(offset));
-    if (variable === null) {
-      return null;
-    }
+      , variable = matchVariable(string.substr(offset));
+    if (variable === null) return null;
+
     offset += variable.end;
     var end = matchTagEnd(string.substr(offset));
-    if (end === null) {
-      return null;
-    }
+    if (end === null) return null;
     return {end: offset + end,  eval: evalRawVariableInsert, sub: variable};
   }
 
   function matchEscVariable(string) {
-    match = matchVariable(string);
-    if (match === null) {
-      return null;
-    }
-    end = matchTagEnd(string.substr(match.end));
-    if (end === null) {
-      return null;
-    }
+    var match = matchVariable(string);
+    if (match === null) return null;
+
+    var end = matchTagEnd(string.substr(match.end));
+    if (end === null) return null;
     return {end: match.end + end, eval: evalVariableInsert, sub: match};
   }
 
   function matchExpression(string) {
     var match = matchGroup(string);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
 
     var substringOffset = match.end
-      , substring = string.substr(substringOffset);
-
-    var operands = [match], operators = [];
-
+      , substring = string.substr(substringOffset)
+      , operands = [match]
+      , operators = [];
     while (true) {
       var opOffset = skipSpaces(substring)
         , opMatch = matchOperator(substring.substr(opOffset));
-      if (opMatch === null) {
-        break;
-      }
+      if (opMatch === null) break;
 
       opOffset += opMatch.end;
       opOffset += skipSpaces(substring.substr(opOffset));
       match = matchGroup(substring.substr(opOffset));
-      if (match === null) {
-        break;
-      }
-      opOffset += match.end;
+      if (match === null) break;
 
+      opOffset += match.end;
       operators.push(opMatch.name);
       operands.push(match);
 
@@ -269,21 +217,15 @@
     var match;
     if (string.substr(0, 1) === '(') {
       match = matchExpression(string.substr(1));
-      if (match !== null) {
-        return null;
-      }
-      if (string.substr(match.end + 1, 1) !== ')') {
-        return null;
-      }
+      if (match !== null) return null;
+      if (string.substr(match.end + 1, 1) !== ')') return null;
       return {end: match.end + 2, eval: evalGroup, sub: match};
     }
 
     var funcs = [matchObject, matchFunction, matchVariable, matchString];
     for (var funcIndex in funcs) {
       match = funcs[funcIndex](string);
-      if (match !== null) {
-        return match;
-      }
+      if (match !== null) return match;
     }
 
     return matchNumber(string);
@@ -291,39 +233,28 @@
 
   function matchFunction(string) {
     var match = /^(\w+)\(/.exec(string);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
     var name = match[1]
       , args = []
       , substringOffset = match[0].length
       , substring = string.substr(substringOffset);
-    if (substring.substr(0, 1) === ')')
-    {
+    if (substring.substr(0, 1) === ')') {
       return {end: substringOffset+1, name: name, args: args};
     }
     match = matchExpression(substring);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
     args.push(match);
     substringOffset += match.end;
     substring = substring.substr(match.end);
 
     while (true) {
       var nextChar = substring.substr(0,1);
-      if (nextChar === ')') {
-        break;
-      }
-      if (nextChar !== ',') {
-        return null;
-      }
+      if (nextChar === ')') break;
+      if (nextChar !== ',') return null;
       var argOffset = 1;
       argOffset += skipSpaces(substring.substr(argOffset));
       match = matchExpression(substring.substr(argOffset));
-      if (match === null) {
-        return null;
-      }
+      if (match === null) return null;
       argOffset += match.end;
       substringOffset += argOffset;
       substring = substring.substr(argOffset);
@@ -333,96 +264,71 @@
 
   function matchString(string) {
     var match = /^'([^']*)'/.exec(string);
-    if (match === null) {
-      return match;
-    }
+    if (match === null) return match;
     return {end: match[0].length, eval: evalString, string: match[1]};
   }
 
   function matchNumber(string) {
     var match = /^(-?)(\d+|0)(.\d+)?/.exec(string);
-    if (match === null) {
-      return null;
-    }
+    if (match === null) return null;
     return {end: match[0].length, eval: evalNumber, number: match[0]};
   }
 
   function matchVariable(string) {
     var match = /^(\$(keys|[$ikld]|)|(?!\d)\w+)/.exec(string);
-    if (match === null) {
-      return null;
-    }
-
+    if (match === null) return null;
     var substringOffset = match[0].length
       , name = match[1]
       , sub = matchSubvariable(string.substr(substringOffset));
 
-    if (sub !== null) {
-      return {end: substringOffset + sub.end, eval: evalVariable, name: name, sub: sub};
-    }
-
-    return {end: substringOffset, eval: evalVariable, name: name}
+    return (sub !== null)
+      ? {end: substringOffset + sub.end, eval: evalVariable, name: name, sub: sub}
+      : {end: substringOffset, eval: evalVariable, name: name};
   }
 
   function matchSubvariable(string) {
     var match = /^\.((?=[^\d])\w+)/.exec(string);
-    if (match === null) {
-      return matchVariableComponent(string);
-    }
+    if (match === null) return matchVariableComponent(string);
 
     var substringOffset = match[0].length
       , name = match[1]
       , sub = matchSubvariable(string.substr(substringOffset));
 
-    if (sub !== null) {
-      return {end: substringOffset + sub.end, eval: evalSubvariable, name: name, sub: sub};
-    }
-
-    return {end: substringOffset, eval: evalSubvariable, name: name};
+    return (sub !== null)
+      ? {end: substringOffset + sub.end, eval: evalSubvariable, name: name, sub: sub}
+      : {end: substringOffset, eval: evalSubvariable, name: name};
   }
 
   function matchVariableComponent(string) {
-    if (string.substr(0,1) !== '[') {
-      return null;
-    }
+    if (string.substr(0,1) !== '[') return null;
 
     var inner = matchVariable(string.substr(1));
-    if (inner === null) {
-      return null;
-    }
-    if (string.substr(1 + inner.end, 1) !== ']') {
-      return null;
-    }
+    if (inner === null) return null;
+    if (string.substr(1 + inner.end, 1) !== ']') return null;
     var substringOffset = 2 + inner.end
       , sub = matchSubvariable(string.substr(substringOffset));
 
-    if (sub !== null) {
-      return {end: substringOffset + sub.end, eval: evalVariableComponent, inner: inner, sub: sub};
-    }
-
-    return {end: substringOffset, eval: evalVariableComponent, inner: inner};
+    return (sub !== null)
+      ? {end: substringOffset + sub.end, eval: evalVariableComponent, inner: inner, sub: sub}
+      : {end: substringOffset, eval: evalVariableComponent, inner: inner};
   }
 
   function matchObject(string) {
-    if (string.substr(0,1) !== '{') {
-      return null;
-    }
+    if (string.substr(0,1) !== '{') return null;
+
     var offset = 1
       , substring = string.substr(1)
       , obj = {};
     while (true) {
       var keyMatch = /^\s+(\w+)\s+:\s+/.exec();
-      if (keyMatch === null) {
-        return null;
-      }
+      if (keyMatch === null) return null;
       var key = keyMatch[1]
         , end = keyMatch[0].length;
       offset += end;
       substring = substring.substr(end);
       var expr = matchExpression(substring);
-      if (expr === null) {
-        return null;
-      }
+      if (expr === null) return null;
+
       obj[key] = expr;
       offset += expr.end;
       substring = substring.substr(expr.end);
@@ -435,9 +341,8 @@
         substring = substring.substr(1);
         break;
       }
-      if (nextChar !== ',') {
-        return null;
-      }
+      if (nextChar !== ',') return null;
+
       offset += 1;
       substring = substring.substr(1);
     }
