@@ -25,7 +25,7 @@
 
     // Выражение {*} ?
     if (start[2]) {
-      match = /^\}\s+/.exec(substring);
+      match = /^\}\s*/.exec(substring);
       if (match !== null) return {start: startOffset, end: substringOffset + match[0].length, eval: evalNothing};
     }
 
@@ -176,7 +176,7 @@
 
     var end = matchTagEnd(string.substr(match.end));
     if (end === null) return null;
-    return {end: match.end + end, eval: evalVariableInsert, sub: match};
+    return {end: match.end + end, eval: evalEscVariableInsert, sub: match};
   }
 
   function matchExpression(string) {
@@ -204,8 +204,9 @@
       substringOffset += opOffset;
       substring = substring.substr(opOffset);
     }
-
-    return {end: substringOffset, eval: evalExpression, operators: operators, operands: operands};
+    return operands.length === 1
+      ? match
+      : {end: substringOffset, eval: evalExpression, operators: operators, operands: operands};
   }
 
   function matchOperator(string) {
@@ -222,7 +223,7 @@
       return {end: match.end + 2, eval: evalGroup, sub: match};
     }
 
-    var funcs = [matchObject, matchFunction, matchVariable, matchString];
+    var funcs = [matchObject, matchVariable, matchString];
     for (var funcIndex in funcs) {
       match = funcs[funcIndex](string);
       if (match !== null) return match;
@@ -231,17 +232,14 @@
     return matchNumber(string);
   }
 
+
   function matchFunction(string) {
-    var match = /^(\w+)\(/.exec(string);
-    if (match === null) return null;
-    var name = match[1]
-      , args = []
-      , substringOffset = match[0].length
+    if (string.substr(0, 1) !== '(') return null;
+    var args = []
+      , substringOffset = 1
       , substring = string.substr(substringOffset);
-    if (substring.substr(0, 1) === ')') {
-      return {end: substringOffset+1, name: name, args: args};
-    }
-    match = matchExpression(substring);
+    if (substring.substr(0, 1) === ')') return {end: substringOffset+1, eval: evalFunction, args: args};
+    var match = matchExpression(substring);
     if (match === null) return null;
     args.push(match);
     substringOffset += match.end;
@@ -259,7 +257,7 @@
       substringOffset += argOffset;
       substring = substring.substr(argOffset);
     }
-    return {end: substringOffset+1, eval: evalFunction, name: name, args: args};
+    return {end: substringOffset+1, eval: evalFunction, args: args};
   }
 
   function matchString(string) {
@@ -277,40 +275,45 @@
   function matchVariable(string) {
     var match = /^(\$(keys|[$ikld]|)|(?!\d)\w+)/.exec(string);
     if (match === null) return null;
-    var substringOffset = match[0].length
-      , name = match[1]
-      , sub = matchSubvariable(string.substr(substringOffset));
+    var name = match[1]
+      , substringOffset = match[0].length
+      , substring = string.substr(substringOffset)
+      , subs = [], sub;
+    while (true) {
+      sub = matchVariableComponent(substring);
+      if (sub !== null) {
+        subs.push(sub);
+        substringOffset += sub.end;
+        substring = substring.substr(sub.end);
+        continue;
+      }
+      sub = matchFunction(substring);
+      if (sub !== null) {
+        subs.push(sub);
+        substringOffset += sub.end;
+        substring = substring.substr(sub.end);
+        continue;
+      }
+      match = /^\.((?=[^\d])\w+)/.exec(substring);
+      if (match !== null) {
+        subs.push({eval: evalSubvariable, name: match[1]});
+        var end = match[0].length;
+        substringOffset += end;
+        substring = substring.substr(end);
+        continue;
+      }
+      break;
+    }
 
-    return (sub !== null)
-      ? {end: substringOffset + sub.end, eval: evalVariable, name: name, sub: sub}
-      : {end: substringOffset, eval: evalVariable, name: name};
-  }
-
-  function matchSubvariable(string) {
-    var match = /^\.((?=[^\d])\w+)/.exec(string);
-    if (match === null) return matchVariableComponent(string);
-
-    var substringOffset = match[0].length
-      , name = match[1]
-      , sub = matchSubvariable(string.substr(substringOffset));
-
-    return (sub !== null)
-      ? {end: substringOffset + sub.end, eval: evalSubvariable, name: name, sub: sub}
-      : {end: substringOffset, eval: evalSubvariable, name: name};
+    return {end: substringOffset, eval: evalVariable, name: name, subs: subs};
   }
 
   function matchVariableComponent(string) {
     if (string.substr(0,1) !== '[') return null;
-
-    var inner = matchVariable(string.substr(1));
-    if (inner === null) return null;
-    if (string.substr(1 + inner.end, 1) !== ']') return null;
-    var substringOffset = 2 + inner.end
-      , sub = matchSubvariable(string.substr(substringOffset));
-
-    return (sub !== null)
-      ? {end: substringOffset + sub.end, eval: evalVariableComponent, inner: inner, sub: sub}
-      : {end: substringOffset, eval: evalVariableComponent, inner: inner};
+    var sub = matchExpression(string.substr(1));
+    if (sub === null) return null;
+    if (string.substr(1 + sub.end, 1) !== ']') return null;
+    return {end: 2 + sub.end, eval: evalVariableComponent, sub: sub};
   }
 
   function matchObject(string) {
@@ -320,7 +323,7 @@
       , substring = string.substr(1)
       , obj = {};
     while (true) {
-      var keyMatch = /^\s+(\w+)\s+:\s+/.exec();
+      var keyMatch = /^\s*(\w+)\s*:\s*/.exec(substring);
       if (keyMatch === null) return null;
       var key = keyMatch[1]
         , end = keyMatch[0].length;
@@ -351,11 +354,19 @@
   }
 
   function evalNothing()            { return ''; }
-  function evalVariableInsert()     { return '"+jQuery.tera.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
+  function evalEscVariableInsert()  { return '"+jQuery.tera.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
   function evalRawVariableInsert()  { return '"+' + this.sub.eval.apply(this.sub, arguments) + '+"'; }
-  function evalVariable()           { return (/^\$/.test(this.name) ? this.name : 'local.' + this.name) + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
-  function evalSubvariable()        { return '.' + this.name + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
-  function evalVariableComponent()  { return '[' + this.inner.eval.apply(this.inner, arguments) + ']' + ('sub' in this ? this.sub.eval.apply(this.sub, arguments) : ''); }
+  function evalVariable()           {
+    var result = (/^\$/.test(this.name) ? this.name : 'local.' + this.name)
+      , subsCount = this.subs.length;
+    for (var i=0; i<subsCount; i++) {
+      var sub = this.subs[i];
+      result += sub.eval.apply(sub, arguments);
+    }
+    return result;
+  }
+  function evalSubvariable()        { return '.' + this.name; }
+  function evalVariableComponent()  { return '[' + this.sub.eval.apply(this.sub, arguments) + ']'; }
   function evalGroup()              { return '(' + this.sub.eval.apply(this.sub, arguments) + ')'; }
   function evalString()             { return "'" + this.string + "'"; }
   function evalNumber()             { return this.number; }
@@ -428,7 +439,7 @@
       var arg = this.args[i];
       args.push(arg.eval.apply(arg, arguments));
     }
-    return this.name + '(' + args.join(',') + ')';
+    return '(' + args.join(',') + ')';
   }
 
   function gen_func_code(template) {

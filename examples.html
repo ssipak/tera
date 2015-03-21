@@ -10,7 +10,7 @@
     <div id="distance_table">
       <script type="text/template-tera" id="distance_table_template" data-copyright="Ssipak co">
         <h1>{raw title}</h1>
-        <h2>{tmpl train_list_template trains}</h2>
+        <h2>{tmpl train_list_template {trains: trains, func: func}}</h2>
         <table>
           <tr>
             <td><input type="checkbox" checked="checked" /></td>
@@ -40,9 +40,12 @@
       </script>
 
       <script type="text/template-tera" id="train_list_template">
-        Поезда с именами {each $}
+        Поезда с именами {each trains}
           {*}
-          {if-first}({else}, {/if}{$k}{if-last}){/if}
+          {if-first}({/if}
+            {*}{$k} [{$.length}]{*}
+            {if func($k)}(sic!){/if}
+          {if-last}){else}, {/if}
           {*}
         {/each}
       </script>
@@ -65,7 +68,8 @@
             'Россия': ['Москва', 'Екатеринбург', 'Новосибирск', 'Иркутск', 'Владивосток'],
             'Афанасий Никитин': ['Москва', 'Санкт-Петербург'],
             'Волга': ['Санкт-Петербург', 'Москва', 'Нижний Новгород']
-          }
+          },
+          func: function(a) { return a === 'Волга' }
         };
 
         var i = 10000, time = new Date;
