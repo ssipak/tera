@@ -354,7 +354,7 @@
   }
 
   function evalNothing()            { return ''; }
-  function evalEscVariableInsert()  { return '"+jQuery.tera.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
+  function evalEscVariableInsert()  { return '"+this.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
   function evalRawVariableInsert()  { return '"+' + this.sub.eval.apply(this.sub, arguments) + '+"'; }
   function evalVariable()           {
     var result = (/^\$/.test(this.name) ? this.name : 'local.' + this.name)
@@ -373,7 +373,7 @@
 
   function evalElse()               { return '";}else{retval+="'; }
   function evalCloseIf()            { return '"}retval+="'; }
-  function evalCloseEach()          { return '";$i++}}).call(this,$it);retval+="'; }
+  function evalCloseEach()          { return '";$i++}}).call(this,$it,$t);retval+="'; }
 
   function evalIfFirstOrLast() {
     return '";' + (this.ifElse ? '}else ' : '')
@@ -384,9 +384,9 @@
   function evalIfEmpty() {
     return '";' + (this.ifElse ? '}else ' : '')
       + 'if($t=' + this.sub.eval.apply(this.sub, arguments) + ','
-      + (this.invert ? '!' : '')+'('
-      + 'jQuery.isArray($t)&&$t.length===0||jQuery.isEmptyObject($t)'
-      + ')){retval+="';
+      + (this.invert ? '!' : '')
+      + '(jQuery.isArray($t)?$t.length===0:jQuery.isEmptyObject($t))'
+      + '){retval+="';
   }
   function evalIf() {
     return '";' + (this.ifElse ? '}else ' : '')
@@ -396,9 +396,11 @@
   }
   function evalEach() {
     var result
-      = '";$it=' + this.sub.eval.apply(this.sub, arguments) + ';(function($$){'
-      + 'var $,$k,$keys,'
-      + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=jQuery.tera.keys($$),$keys.length);'
+      = '";$it=' + this.sub.eval.apply(this.sub, arguments) + ';'
+      + '$t=this.proto(local);'
+      + '(function($$,local){'
+      + 'var $,$k,$keys,$i=0,'
+      + '$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
       + 'while($i<$l){'
       + '$=(($k=$keys?$keys[$i]:$i),$$[$k]);';
     if (this.elem)  {result += 'local.' + this.elem + '=$;';}
@@ -413,7 +415,7 @@
       var param = this.params[i];
       paramsStr += ',' + param.eval.apply(param, arguments);
     }
-    return '"+jQuery.tera.byId("' + this.id + '"' + paramsStr + ')+"';
+    return '"+this.byId("' + this.id + '"' + paramsStr + ')+"';
   }
   function evalObject() {
     var result = [];
@@ -451,15 +453,7 @@
     }
     result += escString(template);
 
-    return ''
-            // Копируем данные в новый объект или массив,
-            // чтобы не затереть данные при определнии переменных в шаблоне
-            + 'var local=(typeof data==="object")'
-              + '?jQuery.extend(jQuery.isArray(data)?[]:{},data)'
-              + ':data,'
-            + '$=local,$d=attrData,$it,$t,retval="'
-            + result
-            + '"; return retval';
+    return 'var local=data,$=local,$d=attrData,$it,$t,retval="' + result + '"; return retval';
   };
 
   function escString(string) {
@@ -550,12 +544,6 @@
 
   $.tera.json = JSON && JSON.stringify || function() { throw new Error('JSON object is not provided') };
 
-  $.tera.errors = function() { return errors; };
-
-  $.tera.lastError = function() {
-    return errors[errors.length - 1];
-  }
-
   // Получение собственных свойств объекта
   $.tera.keys = Object.keys || (function () {
     'use strict';
@@ -606,6 +594,18 @@
       }
     });
   };
+
+  $.tera.proto = function(source) {
+    var constructor = function(){};
+    constructor.prototype = source;
+    return new constructor();
+  }
+
+  $.tera.errors = function() { return errors; };
+
+  $.tera.lastError = function() {
+    return errors[errors.length - 1];
+  }
 
   $.tera.clearCache = function() {
     cache = {};
