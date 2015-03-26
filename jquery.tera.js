@@ -446,8 +446,7 @@
 
   function gen_func_code(template) {
     var result = '', expr;
-    while (expr = searchTag(template))
-    {
+    while (expr = searchTag(template)) {
       result += escString(template.substr(0, expr.start)) + expr.eval();
       template = template.substr(expr.end);
     }
@@ -465,15 +464,14 @@
       .replace(/\r/g, '\\r');
   }
 
+  var errors    = [];
   var cache     = {};
   var cacheById = {};
-  var errors    = [];
 
   $.tera = function(template, data) {
     var code;
     try {
-      if (template in cache === false)
-      {
+      if (template in cache === false) {
         code = gen_func_code(template);
         cache[template] = { func: new Function('data', 'attrData', code), code: code};
       }
@@ -500,21 +498,14 @@
   $.tera.byId = function(id, data) {
     try {
       var $templateEl = $('#'+id);
-      if (id in cacheById === false)
-      {
-        if ($templateEl.length === 0)
-        {
-          return false;
-        }
+      if (id in cacheById === false) {
+        if ($templateEl.length === 0) return false;
         var template = $templateEl.html(), code, func;
 
-        if (template in cache)
-        {
+        if (template in cache) {
           code  = cache.code;
           func  = cache.func;
-        }
-        else
-        {
+        } else {
           code  = gen_func_code(template);
           func  = new Function('data', 'attrData', code);
         }
@@ -601,7 +592,9 @@
     return new constructor();
   }
 
-  $.tera.errors = function() { return errors; };
+  $.tera.errors    = function() { return errors; };
+  $.tera.cache     = function() { return cache; };
+  $.tera.cacheById = function() { return cacheById; };
 
   $.tera.lastError = function() {
     return errors[errors.length - 1];
