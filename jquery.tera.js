@@ -253,6 +253,7 @@
       argOffset += skipSpaces(substring.substr(argOffset));
       match = matchExpression(substring.substr(argOffset));
       if (match === null) return null;
+      args.push(match);
       argOffset += match.end;
       substringOffset += argOffset;
       substring = substring.substr(argOffset);

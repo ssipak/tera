@@ -44,7 +44,7 @@
           {*}
           {if-first}({/if}
             {*}{$k} [{$.length}]{*}
-            {if func($k)}(sic!){/if}
+            {func($k, 5)}
           {if-last}){else}, {/if}
           {*}
         {/each}
@@ -69,7 +69,7 @@
             'Афанасий Никитин': ['Москва', 'Санкт-Петербург'],
             'Волга': ['Санкт-Петербург', 'Москва', 'Нижний Новгород']
           },
-          func: function(a) { return a === 'Волга' }
+          func: function(a, b) { return a.length <= b ? 'town' : 'city' }
         };
 
         var i = 10000, time = new Date;
