@@ -210,7 +210,7 @@
   }
 
   function matchOperator(string) {
-    var match = /^([!=><]=|&&|\|\||\+|\-)/.exec(string);
+    var match = /^([!=<>]=|<|>|&&|\|\||\+|\-)/.exec(string);
     return match === null ? null : {end: match[0].length, name: match[0]};
   }
 
