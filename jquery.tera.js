@@ -1,4 +1,11 @@
-// Tera Templates (Konstantin Krylov)
+/**
+ * @name        Tera Templates
+ * @description jQuery template plugin
+ * @version     2.0.0
+ * @author      Konstantin Krylov
+ * @link        https://github.com/ssipak/tera/tree/2.0
+ * @license     Public domain
+ */
 (function($) {
   var STATEMENTS = [
         generateMatchPrefix(/^else/,          evalElse),
@@ -445,12 +452,44 @@
     return '(' + args.join(',') + ')';
   }
 
-  function gen_func_code(template) {
-    var result = '', expr;
-    while (expr = searchTag(template)) {
-      result += escString(template.substr(0, expr.start)) + expr.eval();
-      template = template.substr(expr.end);
+  function countLines(str) { return (str.match(/\n/g)||[]).length; }
+
+  function genFuncCode(template) {
+    var result      = '', stmt
+      , blockStack  = [], linesPassed = 0;
+    while (stmt = searchTag(template)) {
+      switch (stmt.eval) {
+        case evalEach:
+          blockStack.push(stmt.eval);
+          break;
+        case evalIf:
+        case evalIfEmpty:
+        case evalIfFirstOrLast:
+          if (stmt.ifElse && $.inArray(blockStack.pop(), [evalIf, evalIfEmpty, evalIfFirstOrLast]) === -1) {
+            throw new Error('Unexpected {else-if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+          }
+          blockStack.push(stmt.eval);
+          break;
+
+        case evalCloseEach:
+          if (blockStack.pop() !== evalEach) {
+            throw new Error('Unexpected {/each} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+          }
+          break;
+        case evalCloseIf:
+          if ($.inArray(blockStack.pop(), [evalIf, evalIfEmpty, evalIfFirstOrLast]) === -1) {
+            throw new Error('Unexpected {/if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+          }
+          break;
+      }
+      result      += escString(template.substr(0, stmt.start)) + stmt.eval();
+      linesPassed += countLines(template.substr(0, stmt.end));
+      template    = template.substr(stmt.end);
     }
+    if (blockStack.length > 0) {
+      throw new Error('No closing tag for ' + (blockStack.pop() === evalEach ? '{each}' : '{if}'));
+    }
+
     result += escString(template);
 
     return 'var local=data,$=local,$d=attrData,$it,$t,retval="' + result + '"; return retval';
@@ -473,7 +512,7 @@
     var code;
     try {
       if (template in cache === false) {
-        code = gen_func_code(template);
+        code = genFuncCode(template);
         cache[template] = { func: new Function('data', 'attrData', code), code: code};
       }
       return cache[template].func.call($.tera, data);
@@ -507,7 +546,7 @@
           code  = cache.code;
           func  = cache.func;
         } else {
-          code  = gen_func_code(template);
+          code  = genFuncCode(template);
           func  = new Function('data', 'attrData', code);
         }
 
@@ -614,7 +653,7 @@
       {
         id        = $(this).attr('id');
         template  = $(this).html();
-        code      = gen_func_code(template);
+        code      = genFuncCode(template);
         func      = new Function('data', 'attrData', code);
 
         cache[template] = { func: func, code: code };
