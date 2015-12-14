@@ -59,8 +59,8 @@
   }
 
   function matchOpenCondition(string) {
-    //            1       2  3              4 5      6
-    var match = /^(else-)?(if(-not)?|unless)(-(empty|(first|last)))?/.exec(string);
+    //            1       2  3              4 5                     6
+    var match = /^(else-)?(if(-not)?|unless)(-(empty|key|val(?:ue)?|(first|last)))?/.exec(string);
     if (match === null) return null;
 
     var substringOffset = match[0].length
@@ -69,7 +69,7 @@
       , invert          = match[2] === 'if-not' || match[2] === 'unless'
       , end, expr;
 
-    if (match[6]) {
+    if (match[6]) { // {if-first} | {if-last}
       end = matchTagEnd(substring);
       if (end === null) return null;
       return {end: substringOffset + end, eval: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
@@ -77,11 +77,10 @@
 
     var spaces = skipSpaces(substring);
     if (spaces === 0) return null;
-
     substringOffset += spaces;
     substring = substring.substr(spaces);
 
-    if (match[5] === 'empty') {
+    if (match[5] === 'empty') { // {if-empty array_or_object}
       expr = matchVariable(substring);
       if (expr === null) return null;
       end = matchTagEnd(substring.substr(expr.end));
@@ -91,9 +90,27 @@
 
     expr = matchExpression(substring);
     if (expr === null) return null;
-    end = matchTagEnd(substring.substr(expr.end));
+
+    if (!match[5]) { // {if expr}
+      end = matchTagEnd(substring.substr(expr.end));
+      if (end === null) return null;
+      return {end: substringOffset + expr.end + end, eval: evalIf, invert: invert, ifElse: ifElse, sub: expr};
+    }
+
+    // {if-key key in array_or_object} | {if-val[ue] value in array_or_object}
+    substringOffset += expr.end;
+    substring = substring.substr(expr.end);
+    var delimiter = substring.match(/^\s+in\s+/);
+    if (delimiter === null) return null;
+    delimiter = delimiter[0].length;
+    substringOffset += delimiter;
+    substring = substring.substr(delimiter);
+
+    var sub = matchVariable(substring);
+    if (sub === null) return null;
+    end = matchTagEnd(substring.substr(sub.end));
     if (end === null) return null;
-    return {end: substringOffset + expr.end + end, eval: evalIf, invert: invert, ifElse: ifElse, sub: expr};
+    return {end: substringOffset + sub.end + end, eval: evalIfKeyOrValue, invert: invert, ifElse: ifElse, ifKey: match[5]==='key', expr: expr, sub: sub};
   }
 
   function matchEach(string) {
@@ -383,24 +400,31 @@
   function evalCloseIf()            { return '"}retval+="'; }
   function evalCloseEach()          { return '";$i++}}).call(this,$it,$t);retval+="'; }
 
+  function genEvalIf(ifElse, condition) {
+    return '";' + (ifElse ? '}else ' : '') + 'if(' + condition + '){retval+="';
+  }
   function evalIfFirstOrLast() {
-    return '";' + (this.ifElse ? '}else ' : '')
-      + 'if($i' + (this.invert ? '!=' : '==')
-      + (this.pos == 'first' ? '0' : '$l-1')
-      + '){retval+="';
+    return genEvalIf(this.ifElse, '$i' + (this.invert ? '!=' : '==') + (this.pos == 'first' ? '0' : '$l-1'));
   }
   function evalIfEmpty() {
-    return '";' + (this.ifElse ? '}else ' : '')
-      + 'if($t=' + this.sub.eval.apply(this.sub, arguments) + ','
+    return genEvalIf(this.ifElse,
+        '$t=' + this.sub.eval.apply(this.sub, arguments) + ','
       + (this.invert ? '!' : '')
       + '(jQuery.isArray($t)?$t.length===0:jQuery.isEmptyObject($t))'
-      + '){retval+="';
+    );
   }
   function evalIf() {
-    return '";' + (this.ifElse ? '}else ' : '')
-      + 'if(' + (this.invert ? '!' : '')
-      + '(' + this.sub.eval.apply(this.sub, arguments)
-      + ')){retval+="';
+    return genEvalIf(this.ifElse, (this.invert ? '!' : '') + '(' + this.sub.eval.apply(this.sub, arguments) + ')');
+  }
+  function evalIfKeyOrValue() {
+    return genEvalIf(this.ifElse,
+        '$t=' + this.sub.eval.apply(this.sub, arguments) + ','
+      + '$e=' + this.expr.eval.apply(this.expr, arguments) + ','
+      + (this.invert ? '!' : '')
+      + (this.ifKey
+          ? 'jQuery.isArray($t)?$e>=0||$e<$t.length:jQuery.inArray($e,this.keys($t))!==-1'
+          : 'jQuery.inArray($e,this.values($t))!==-1')
+    );
   }
   function evalEach() {
     var result
@@ -454,33 +478,29 @@
 
   function countLines(str) { return (str.match(/\n/g)||[]).length; }
 
+  var listOfEvalIf = [evalIfFirstOrLast, evalIfEmpty, evalIf, evalIfKeyOrValue];
   function genFuncCode(template) {
     var result      = '', stmt
       , blockStack  = [], linesPassed = 0;
     while (stmt = searchTag(template)) {
-      switch (stmt.eval) {
-        case evalEach:
-          blockStack.push(stmt.eval);
-          break;
-        case evalIf:
-        case evalIfEmpty:
-        case evalIfFirstOrLast:
-          if (stmt.ifElse && $.inArray(blockStack.pop(), [evalIf, evalIfEmpty, evalIfFirstOrLast]) === -1) {
-            throw new Error('Unexpected {else-if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
-          }
-          blockStack.push(stmt.eval);
-          break;
-
-        case evalCloseEach:
-          if (blockStack.pop() !== evalEach) {
-            throw new Error('Unexpected {/each} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
-          }
-          break;
-        case evalCloseIf:
-          if ($.inArray(blockStack.pop(), [evalIf, evalIfEmpty, evalIfFirstOrLast]) === -1) {
-            throw new Error('Unexpected {/if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
-          }
-          break;
+      if (stmt.eval === evalEach) {
+        blockStack.push(stmt.eval);
+      }
+      else if ($.inArray(stmt.eval, listOfEvalIf) !== -1) {
+        if (stmt.ifElse && $.inArray(blockStack.pop(), listOfEvalIf) === -1) {
+          throw new Error('Unexpected {else-if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+        }
+        blockStack.push(stmt.eval);
+      }
+      else if (stmt.eval === evalCloseEach) {
+        if (blockStack.pop() !== evalEach) {
+          throw new Error('Unexpected {/each} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+        }
+      }
+      else if (stmt.eval === evalCloseIf) {
+        if ($.inArray(blockStack.pop(), listOfEvalIf) === -1) {
+          throw new Error('Unexpected {/if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+        }
       }
       result      += escString(template.substr(0, stmt.start)) + stmt.eval();
       linesPassed += countLines(template.substr(0, stmt.end));
@@ -492,7 +512,8 @@
 
     result += escString(template);
 
-    return 'var local=data,$=local,$d=attrData,$it,$t,retval="' + result + '"; return retval';
+    // $t, $e - temporary multipurpose variables
+    return 'var local=data,$=local,$d=attrData,$it,$t,$e,retval="' + result + '"; return retval';
   };
 
   function escString(string) {
@@ -508,14 +529,14 @@
   var cache     = {};
   var cacheById = {};
 
-  $.tera = function(template, data) {
+  var plugin = function(template, data) {
     var code;
     try {
       if (template in cache === false) {
         code = genFuncCode(template);
         cache[template] = { func: new Function('data', 'attrData', code), code: code};
       }
-      return cache[template].func.call($.tera, data);
+      return cache[template].func.call(plugin, data);
     }
     catch (e) {
       var error = {
@@ -535,7 +556,7 @@
     }
   };
 
-  $.tera.byId = function(id, data) {
+  plugin.byId = function(id, data) {
     try {
       var $templateEl = $('#'+id);
       if (id in cacheById === false) {
@@ -573,10 +594,10 @@
     }
   };
 
-  $.tera.json = JSON && JSON.stringify || function() { throw new Error('JSON object is not provided') };
+  plugin.json = JSON && JSON.stringify || function() { throw new Error('JSON object is not provided') };
 
   // Получение собственных свойств объекта
-  $.tera.keys = Object.keys || (function () {
+  plugin.keys = Object.keys || (function () {
     'use strict';
     var hasOwnProperty = Object.prototype.hasOwnProperty,
       hasDontEnumBug = !({toString: null}).propertyIsEnumerable('toString'),
@@ -613,8 +634,17 @@
     };
   }());
 
+  plugin.values = function(obj) {
+    if ($.isArray(obj)) return obj;
+    var values = [];
+    for (var i=0, keys=this.keys(obj), len=keys.length; i<len; i++) {
+      values.push(obj[keys[i]]);
+    }
+    return values;
+  }
+
   // Экранирование специальных символов HTML
-  $.tera.escape = function(str) {
+  plugin.escape = function(str) {
     return (''+str).replace(/[&<'"]/g, function(match) {
       switch(match[0])
       {
@@ -626,24 +656,26 @@
     });
   };
 
-  $.tera.proto = function(source) {
+  plugin.proto = function(source) {
     var constructor = function(){};
     constructor.prototype = source;
     return new constructor();
   }
 
-  $.tera.errors    = function() { return errors; };
-  $.tera.cache     = function() { return cache; };
-  $.tera.cacheById = function() { return cacheById; };
+  plugin.errors    = function() { return errors; };
+  plugin.cache     = function() { return cache; };
+  plugin.cacheById = function() { return cacheById; };
 
-  $.tera.lastError = function() {
+  plugin.lastError = function() {
     return errors[errors.length - 1];
   }
 
-  $.tera.clearCache = function() {
+  plugin.clearCache = function() {
     cache = {};
     cacheById = {};
   };
+
+  $.tera = plugin;
 
   $(function(){
     $('script[type="text/template-tera"]').each(function() {
@@ -671,4 +703,4 @@
       }
     });
   })
-})(jQuery);
+}) (jQuery);

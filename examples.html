@@ -8,6 +8,22 @@
   </head>
   <body>
     <div id="distance_table">
+      <script type="text/template-tera" id="train_list_template">
+        Поезда с именами {each trains}
+        {*}
+        {if-first}({/if}
+        {*}{$k} [{$.length}]{*}
+        {func($k, 5)}
+        {if-last}){else}, {/if}
+        {*}
+        {/each}
+        {if-key 'Россия' in trains}
+        <p>Поезд с именем "Россия"? Очень оригинально!</p>
+        {else}
+        <p>Странно, что ни один поезд не назван "Россия".</p>
+        {/if}
+      </script>
+
       <script type="text/template-tera" id="distance_table_template" data-copyright="Ssipak co">
         <h1>{raw title}</h1>
         <h2>{tmpl train_list_template {trains: trains, func: func}}</h2>
@@ -37,17 +53,6 @@
           {/each}
         </table>
         <small>{$d.copyright}</small>
-      </script>
-
-      <script type="text/template-tera" id="train_list_template">
-        Поезда с именами {each trains}
-          {*}
-          {if-first}({/if}
-            {*}{$k} [{$.length}]{*}
-            {func($k, 5)}
-          {if-last}){else}, {/if}
-          {*}
-        {/each}
       </script>
     </div>
     <script type="text/javascript">
