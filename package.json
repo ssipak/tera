@@ -4,7 +4,8 @@
   "description": "Compiling javascript template engine",
   "main": "-",
   "scripts": {
-    "test": "-"
+    "test": "-",
+    "gulp": "node ./node_modules/gulp/bin/gulp.js"
   },
   "repository": {
     "type": "git",
