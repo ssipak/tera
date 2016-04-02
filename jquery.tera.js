@@ -51,7 +51,7 @@
   function matchTagEnd(string) {
     var match = /^(\s*(\*?)\})\s*/.exec(string);
     if (match === null) return null;
-    return match[2] ? match[1].length : match[0].length;
+    return match[2] ? match[0].length : match[1].length;
   }
 
   function skipSpaces(string) {

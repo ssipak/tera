@@ -12,8 +12,8 @@
         Поезда с именами {each trains}
         {*}
         {if-first}({/if}
-        {*}{$k} [{$.length}]{*}
-        {func($k, 5)}
+        {*}{$k} [{$.length}]
+        {func($k, 5)*}
         {if-last}){else}, {/if}
         {*}
         {/each}
@@ -41,9 +41,9 @@
               {each stations}
                 <td>
                   {if distance[$.id][station.id]}
-                    {distance[$.id][station.id]}
+                    {distance[$.id][station.id]} км
                   {else-if distance[station.id][$.id]}
-                    {distance[station.id][$.id]}
+                    {distance[station.id][$.id]} км
                   {else}
                     &mdash;
                   {/if}
