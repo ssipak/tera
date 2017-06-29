@@ -286,9 +286,9 @@
   }
 
   function matchString(string) {
-    var match = /^'([^']*)'/.exec(string);
+    var match = /^(['"])((?!\1)[^\\]|\\.)*\1/.exec(string);
     if (match === null) return match;
-    return {end: match[0].length, eval: evalString, string: match[1]};
+    return {end: match[0].length, eval: evalString, string: match[0]};
   }
 
   function matchNumber(string) {
@@ -393,7 +393,7 @@
   function evalSubvariable()        { return '.' + this.name; }
   function evalVariableComponent()  { return '[' + this.sub.eval.apply(this.sub, arguments) + ']'; }
   function evalGroup()              { return '(' + this.sub.eval.apply(this.sub, arguments) + ')'; }
-  function evalString()             { return "'" + this.string + "'"; }
+  function evalString()             { return this.string; }
   function evalNumber()             { return this.number; }
 
   function evalElse()               { return '";}else{retval+="'; }
