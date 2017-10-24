@@ -40,7 +40,7 @@
       match = STATEMENTS[stmtInd](substring);
       if (match !== null) {
         match.start = startOffset;
-        match.end   += substringOffset;
+        match.end   = match.len + substringOffset;
         return match;
       }
     }
@@ -67,12 +67,12 @@
       , substring       = string.substr(substringOffset)
       , ifElse          = match[1]
       , invert          = match[2] === 'if-not' || match[2] === 'unless'
-      , end, expr;
+      , len, expr;
 
     if (match[6]) { // {if-first} | {if-last}
-      end = matchTagEnd(substring);
-      if (end === null) return null;
-      return {end: substringOffset + end, eval: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
+      len = matchTagEnd(substring);
+      if (len === null) return null;
+      return {len: substringOffset + len, eval: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
     }
 
     var spaces = skipSpaces(substring);
@@ -83,23 +83,23 @@
     if (match[5] === 'empty') { // {if-empty array_or_object}
       expr = matchVariable(substring);
       if (expr === null) return null;
-      end = matchTagEnd(substring.substr(expr.end));
-      if (end === null) return null;
-      return {end: substringOffset + expr.end + end, eval: evalIfEmpty, invert: invert, ifElse: ifElse, sub: expr};
+      len = matchTagEnd(substring.substr(expr.len));
+      if (len === null) return null;
+      return {len: substringOffset + expr.len + len, eval: evalIfEmpty, invert: invert, ifElse: ifElse, sub: expr};
     }
 
     expr = matchExpression(substring);
     if (expr === null) return null;
 
     if (!match[5]) { // {if expr}
-      end = matchTagEnd(substring.substr(expr.end));
-      if (end === null) return null;
-      return {end: substringOffset + expr.end + end, eval: evalIf, invert: invert, ifElse: ifElse, sub: expr};
+      len = matchTagEnd(substring.substr(expr.len));
+      if (len === null) return null;
+      return {len: substringOffset + expr.len + len, eval: evalIf, invert: invert, ifElse: ifElse, sub: expr};
     }
 
     // {if-key key in array_or_object} | {if-val[ue] value in array_or_object}
-    substringOffset += expr.end;
-    substring = substring.substr(expr.end);
+    substringOffset += expr.len;
+    substring = substring.substr(expr.len);
     var delimiter = substring.match(/^\s+in\s+/);
     if (delimiter === null) return null;
     delimiter = delimiter[0].length;
@@ -108,9 +108,9 @@
 
     var sub = matchVariable(substring);
     if (sub === null) return null;
-    end = matchTagEnd(substring.substr(sub.end));
-    if (end === null) return null;
-    return {end: substringOffset + sub.end + end, eval: evalIfKeyOrValue, invert: invert, ifElse: ifElse, ifKey: match[5]==='key', expr: expr, sub: sub};
+    len = matchTagEnd(substring.substr(sub.len));
+    if (len === null) return null;
+    return {len: substringOffset + sub.len + len, eval: evalIfKeyOrValue, invert: invert, ifElse: ifElse, ifKey: match[5]==='key', expr: expr, sub: sub};
   }
 
   function matchEach(string) {
@@ -131,22 +131,21 @@
     match = matchVariable(substring);
     if (match === null) return null;
 
-    substringOffset += match.end;
-    substring = substring.substr(match.end);
-    var end = matchTagEnd(substring);
-    if (end === null) return null;
+    substringOffset += match.len;
+    substring = substring.substr(match.len);
+    var len = matchTagEnd(substring);
+    if (len === null) return null;
 
-    return {end: substringOffset + end, eval: evalEach, sub: match, elem: elem, key: key, index: index};
+    return {len: substringOffset + len, eval: evalEach, sub: match, elem: elem, key: key, index: index};
   }
 
-  function generateMatchPrefix(prefixRegExp, eval)
-  {
+  function generateMatchPrefix(prefixRegExp, eval) {
     return function(string) {
       var match = prefixRegExp.exec(string);
       if (match === null) return null;
-      var end = matchTagEnd(string.substr(match[0].length));
-      if (end === null) return null;
-      return {end: match[0].length + end, eval: eval};
+      var len = matchTagEnd(string.substr(match[0].length));
+      if (len === null) return null;
+      return {len: match[0].length + len, eval: eval};
     };
   }
 
@@ -157,12 +156,12 @@
       , params = []
       , offset = match[0].length
       , substring = string.substr(offset)
-      , end;
+      , len;
 
     while (true) {
-      end = matchTagEnd(substring);
-      if (end !== null) {
-        offset += end;
+      len = matchTagEnd(substring);
+      if (len !== null) {
+        offset += len;
         break;
       }
       var spaces = skipSpaces(substring);
@@ -172,11 +171,11 @@
       if (match === null) return null;
 
       params.push(match);
-      offset += match.end;
-      substring = substring.substr(match.end);
+      offset += match.len;
+      substring = substring.substr(match.len);
     }
-    if (end === null) return null;
-    return {end: offset, eval: evalTemplate, id: id, params: params};
+    if (len === null) return null;
+    return {len: offset, eval: evalTemplate, id: id, params: params};
   }
 
   function matchRawVariable(string) {
@@ -188,26 +187,26 @@
       , variable = matchVariable(string.substr(offset));
     if (variable === null) return null;
 
-    offset += variable.end;
-    var end = matchTagEnd(string.substr(offset));
-    if (end === null) return null;
-    return {end: offset + end,  eval: evalRawVariableInsert, sub: variable};
+    offset += variable.len;
+    var len = matchTagEnd(string.substr(offset));
+    if (len === null) return null;
+    return {len: offset + len,  eval: evalRawVariableInsert, sub: variable};
   }
 
   function matchEscVariable(string) {
     var match = matchVariable(string);
     if (match === null) return null;
 
-    var end = matchTagEnd(string.substr(match.end));
-    if (end === null) return null;
-    return {end: match.end + end, eval: evalEscVariableInsert, sub: match};
+    var len = matchTagEnd(string.substr(match.len));
+    if (len === null) return null;
+    return {len: match.len + len, eval: evalEscVariableInsert, sub: match};
   }
 
   function matchExpression(string) {
     var match = matchGroup(string);
     if (match === null) return null;
 
-    var substringOffset = match.end
+    var substringOffset = match.len
       , substring = string.substr(substringOffset)
       , operands = [match]
       , operators = [];
@@ -216,12 +215,12 @@
         , opMatch = matchOperator(substring.substr(opOffset));
       if (opMatch === null) break;
 
-      opOffset += opMatch.end;
+      opOffset += opMatch.len;
       opOffset += skipSpaces(substring.substr(opOffset));
       match = matchGroup(substring.substr(opOffset));
       if (match === null) break;
 
-      opOffset += match.end;
+      opOffset += match.len;
       operators.push(opMatch.name);
       operands.push(match);
 
@@ -230,12 +229,12 @@
     }
     return operands.length === 1
       ? match
-      : {end: substringOffset, eval: evalExpression, operators: operators, operands: operands};
+      : {len: substringOffset, eval: evalExpression, operators: operators, operands: operands};
   }
 
   function matchOperator(string) {
     var match = /^([!=<>]=|<|>|&&|\|\||\+|\-)/.exec(string);
-    return match === null ? null : {end: match[0].length, name: match[0]};
+    return match === null ? null : {len: match[0].length, name: match[0]};
   }
 
   function matchGroup(string) {
@@ -243,8 +242,8 @@
     if (string.substr(0, 1) === '(') {
       match = matchExpression(string.substr(1));
       if (match !== null) return null;
-      if (string.substr(match.end + 1, 1) !== ')') return null;
-      return {end: match.end + 2, eval: evalGroup, sub: match};
+      if (string.substr(match.len + 1, 1) !== ')') return null;
+      return {len: match.len + 2, eval: evalGroup, sub: match};
     }
 
     var funcs = [matchObject, matchVariable, matchString];
@@ -262,12 +261,12 @@
     var args = []
       , substringOffset = 1
       , substring = string.substr(substringOffset);
-    if (substring.substr(0, 1) === ')') return {end: substringOffset+1, eval: evalFunction, args: args};
+    if (substring.substr(0, 1) === ')') return {len: substringOffset+1, eval: evalFunction, args: args};
     var match = matchExpression(substring);
     if (match === null) return null;
     args.push(match);
-    substringOffset += match.end;
-    substring = substring.substr(match.end);
+    substringOffset += match.len;
+    substring = substring.substr(match.len);
 
     while (true) {
       var nextChar = substring.substr(0,1);
@@ -278,23 +277,23 @@
       match = matchExpression(substring.substr(argOffset));
       if (match === null) return null;
       args.push(match);
-      argOffset += match.end;
+      argOffset += match.len;
       substringOffset += argOffset;
       substring = substring.substr(argOffset);
     }
-    return {end: substringOffset+1, eval: evalFunction, args: args};
+    return {len: substringOffset+1, eval: evalFunction, args: args};
   }
 
   function matchString(string) {
     var match = /^(['"])((?!\1)[^\\]|\\.)*\1/.exec(string);
     if (match === null) return match;
-    return {end: match[0].length, eval: evalString, string: match[0]};
+    return {len: match[0].length, eval: evalString, string: match[0]};
   }
 
   function matchNumber(string) {
     var match = /^(-?)(\d+|0)(.\d+)?/.exec(string);
     if (match === null) return null;
-    return {end: match[0].length, eval: evalNumber, number: match[0]};
+    return {len: match[0].length, eval: evalNumber, number: match[0]};
   }
 
   function matchVariable(string) {
@@ -308,37 +307,37 @@
       sub = matchVariableComponent(substring);
       if (sub !== null) {
         subs.push(sub);
-        substringOffset += sub.end;
-        substring = substring.substr(sub.end);
+        substringOffset += sub.len;
+        substring = substring.substr(sub.len);
         continue;
       }
       sub = matchFunction(substring);
       if (sub !== null) {
         subs.push(sub);
-        substringOffset += sub.end;
-        substring = substring.substr(sub.end);
+        substringOffset += sub.len;
+        substring = substring.substr(sub.len);
         continue;
       }
       match = /^\.((?=[^\d])\w+)/.exec(substring);
       if (match !== null) {
         subs.push({eval: evalSubvariable, name: match[1]});
-        var end = match[0].length;
-        substringOffset += end;
-        substring = substring.substr(end);
+        var len = match[0].length;
+        substringOffset += len;
+        substring = substring.substr(len);
         continue;
       }
       break;
     }
 
-    return {end: substringOffset, eval: evalVariable, name: name, subs: subs};
+    return {len: substringOffset, eval: evalVariable, name: name, subs: subs};
   }
 
   function matchVariableComponent(string) {
     if (string.substr(0,1) !== '[') return null;
     var sub = matchExpression(string.substr(1));
     if (sub === null) return null;
-    if (string.substr(1 + sub.end, 1) !== ']') return null;
-    return {end: 2 + sub.end, eval: evalVariableComponent, sub: sub};
+    if (string.substr(1 + sub.len, 1) !== ']') return null;
+    return {len: 2 + sub.len, eval: evalVariableComponent, sub: sub};
   }
 
   function matchObject(string) {
@@ -348,21 +347,28 @@
       , substring = string.substr(1)
       , obj = {};
     while (true) {
-      var keyMatch = /^\s*(\w+)\s*:\s*/.exec(substring);
+      var keyMatch = /^\s*(\w+)\s*(:?)\s*/.exec(substring);
       if (keyMatch === null) return null;
       var key = keyMatch[1]
-        , end = keyMatch[0].length;
-      offset += end;
-      substring = substring.substr(end);
-      var expr = matchExpression(substring);
-      if (expr === null) return null;
+        , colon = keyMatch[2]
+        , len = keyMatch[0].length;
+      offset += len;
+      substring = substring.substr(len);
 
-      obj[key] = expr;
-      offset += expr.end;
-      substring = substring.substr(expr.end);
-      var spaces = skipSpaces(substring);
-      offset += spaces;
-      substring = substring.substr(spaces);
+      if (colon) {
+        var expr = matchExpression(substring);
+        if (expr === null) return null;
+
+        obj[key] = expr;
+        offset += expr.len;
+        substring = substring.substr(expr.len);
+        var spaces = skipSpaces(substring);
+        offset += spaces;
+        substring = substring.substr(spaces);
+      } else {
+        obj[key] = {len: 0, eval: evalVariable, name: key, subs: []};
+      }
+
       var nextChar = substring.substr(0,1);
       if (nextChar === '}') {
         offset += 1;
@@ -375,7 +381,7 @@
       substring = substring.substr(1);
     }
 
-    return {end: offset, eval: evalObject, object: obj}
+    return {len: offset, eval: evalObject, object: obj}
   }
 
   function evalNothing()            { return ''; }
@@ -641,7 +647,7 @@
       values.push(obj[keys[i]]);
     }
     return values;
-  }
+  };
 
   // Экранирование специальных символов HTML
   plugin.escape = function(str) {
@@ -660,7 +666,7 @@
     var constructor = function(){};
     constructor.prototype = source;
     return new constructor();
-  }
+  };
 
   plugin.errors    = function() { return errors; };
   plugin.cache     = function() { return cache; };
@@ -668,7 +674,7 @@
 
   plugin.lastError = function() {
     return errors[errors.length - 1];
-  }
+  };
 
   plugin.clearCache = function() {
     cache = {};
