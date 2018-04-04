@@ -8,6 +8,8 @@
  */
 (function($) {
   var STATEMENTS = [
+        generateMatchPrefix(/^</,             evalOpenCurly),
+        generateMatchPrefix(/^>/,             evalClosedCurly),
         generateMatchPrefix(/^else/,          evalElse),
         generateMatchPrefix(/^\/(if|unless)/, evalCloseIf),
         generateMatchPrefix(/^\/each/,        evalCloseEach),
@@ -16,7 +18,8 @@
         matchOpenCondition, // {[else-](if[-not]|unless)[-empty|-first|-last] [expr]}
         matchTemplate,      // {tmpl template_name}
         matchRawVariable,   // {raw var}
-        matchEscVariable    // {var.key[var2.key2[var3]].key4}
+        matchEscVariable,   // {var.key[var2.key2[var3]].key4} | {esc var}
+        matchJson           // {[raw-]json var}
       ]
     , STATEMENTS_COUNT = STATEMENTS.length;
 
@@ -33,7 +36,9 @@
     // Выражение {*} ?
     if (start[2]) {
       match = /^\}\s*/.exec(substring);
-      if (match !== null) return {start: startOffset, end: substringOffset + match[0].length, eval: evalNothing};
+      if (match !== null) {
+        return {start: startOffset, end: substringOffset + match[0].length, eval: evalNothing};
+      }
     }
 
     for (var stmtInd=0; stmtInd<STATEMENTS_COUNT; stmtInd++) {
@@ -179,12 +184,12 @@
   }
 
   function matchRawVariable(string) {
-    if (string.substr(0,3) !== 'raw') return null;
+    if (string.substr(0, 3) !== 'raw') return null;
     var spaces = skipSpaces(string.substr(3));
     if (spaces < 1) return null;
 
-    var offset = 3 + spaces
-      , variable = matchVariable(string.substr(offset));
+    var offset = 3 + spaces;
+    var variable = matchVariable(string.substr(offset));
     if (variable === null) return null;
 
     offset += variable.len;
@@ -194,12 +199,49 @@
   }
 
   function matchEscVariable(string) {
-    var match = matchVariable(string);
-    if (match === null) return null;
+    var offset = 0;
+    if (string.substr(0, 3) === 'esc') {
+      var spaces = skipSpaces(string.substr(3));
+      if (spaces >= 1) {
+        offset = 3 + spaces;
+      }
+    }
 
-    var len = matchTagEnd(string.substr(match.len));
+    var variable = matchVariable(string.substr(offset));
+    if (variable === null) return null;
+
+    offset += variable.len;
+    var len = matchTagEnd(string.substr(offset));
     if (len === null) return null;
-    return {len: match.len + len, eval: evalEscVariableInsert, sub: match};
+    return {len: offset + len, eval: evalEscVariableInsert, sub: variable};
+  }
+
+  function matchJson(string) {
+    var offset = 0;
+    var isRaw = false;
+    if (string.substr(0, 4) === 'json') {
+      var spaces = skipSpaces(string.substr(4));
+      if (spaces === 0) {
+        return null;
+      }
+      offset = 4 + spaces;
+    }
+    else if (string.substr(0, 8) === 'raw-json') {
+      var spaces = skipSpaces(string.substr(8));
+      if (spaces === 0) {
+        return null;
+      }
+      offset = 8 + spaces;
+      isRaw = true;
+    }
+
+    var variable = matchVariable(string.substr(offset));
+    if (variable === null) return null;
+
+    offset += variable.len;
+    var len = matchTagEnd(string.substr(offset));
+    if (len === null) return null;
+    return {len: offset + len, eval: isRaw ? evalRawJsonInsert : evalEscJsonInsert, sub: variable};
   }
 
   function matchExpression(string) {
@@ -233,7 +275,7 @@
   }
 
   function matchOperator(string) {
-    var match = /^([!=<>]=|<|>|&&|\|\||\+|\-)/.exec(string);
+    var match = /^([!=<>]=|[<>+-]|&&|\|\|)/.exec(string);
     return match === null ? null : {len: match[0].length, name: match[0]};
   }
 
@@ -381,12 +423,14 @@
       substring = substring.substr(1);
     }
 
-    return {len: offset, eval: evalObject, object: obj}
+    return {len: offset, eval: evalObject, object: obj};
   }
 
   function evalNothing()            { return ''; }
   function evalEscVariableInsert()  { return '"+this.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
   function evalRawVariableInsert()  { return '"+' + this.sub.eval.apply(this.sub, arguments) + '+"'; }
+  function evalRawJsonInsert()      { return '"+this.json(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
+  function evalEscJsonInsert()      { return '"+this.escape(this.json(' + this.sub.eval.apply(this.sub, arguments) + '))+"'; }
   function evalVariable()           {
     var result = (/^\$/.test(this.name) ? this.name : 'local.' + this.name)
       , subsCount = this.subs.length;
@@ -402,6 +446,8 @@
   function evalString()             { return this.string; }
   function evalNumber()             { return this.number; }
 
+  function evalOpenCurly()          { return '{'; }
+  function evalClosedCurly()        { return '}'; }
   function evalElse()               { return '";}else{retval+="'; }
   function evalCloseIf()            { return '"}retval+="'; }
   function evalCloseEach()          { return '";$i++}}).call(this,$it,$t);retval+="'; }
@@ -520,7 +566,7 @@
 
     // $t, $e - temporary multipurpose variables
     return 'var local=data,$=local,$d=attrData,$it,$t,$e,retval="' + result + '"; return retval';
-  };
+  }
 
   function escString(string) {
     return string
@@ -662,7 +708,7 @@
     });
   };
 
-  plugin.proto = function(source) {
+  plugin.proto = Object.create || function(source) {
     var constructor = function(){};
     constructor.prototype = source;
     return new constructor();
