@@ -300,28 +300,38 @@
 
   function matchFunction(string) {
     if (string.substr(0, 1) !== '(') return null;
-    var args = []
-      , substringOffset = 1
-      , substring = string.substr(substringOffset);
+    var args = [];
+    var substringOffset = 1 + skipSpaces(string.substr(1));
+    var substring = string.substr(substringOffset);
     if (substring.substr(0, 1) === ')') return {len: substringOffset+1, eval: evalFunction, args: args};
+
     var match = matchExpression(substring);
     if (match === null) return null;
     args.push(match);
     substringOffset += match.len;
     substring = substring.substr(match.len);
 
+    var spaces = skipSpaces(substring);
+    substringOffset += spaces;
+    substring = substring.substr(spaces);
+
     while (true) {
       var nextChar = substring.substr(0,1);
       if (nextChar === ')') break;
       if (nextChar !== ',') return null;
-      var argOffset = 1;
-      argOffset += skipSpaces(substring.substr(argOffset));
+      var argOffset = 1 + skipSpaces(substring.substr(1));
+
       match = matchExpression(substring.substr(argOffset));
       if (match === null) return null;
       args.push(match);
+
       argOffset += match.len;
       substringOffset += argOffset;
       substring = substring.substr(argOffset);
+
+      spaces = skipSpaces(substring);
+      substringOffset += spaces;
+      substring = substring.substr(spaces);
     }
     return {len: substringOffset+1, eval: evalFunction, args: args};
   }

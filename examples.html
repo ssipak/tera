@@ -13,7 +13,10 @@
         {*}
         {if-first}({/if}
         {*}{$k} [{$.length}]
-        {func($k, 5)*}
+        {func(
+          $k,
+          5
+        )*}
         {if-last}){else}, {/if}
         {*}
         {/each}
