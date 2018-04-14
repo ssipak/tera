@@ -1,7 +1,7 @@
 /**
  * @name        Tera Templates
  * @description jQuery template plugin
- * @version     2.0.0
+ * @version     2.1.0
  * @author      Konstantin Krylov
  * @link        https://github.com/ssipak/tera/tree/2.0
  * @license     Public domain
