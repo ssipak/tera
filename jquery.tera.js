@@ -288,7 +288,7 @@
       return {len: match.len + 2, eval: evalGroup, sub: match};
     }
 
-    var funcs = [matchObject, matchVariable, matchString];
+    var funcs = [matchObject, matchArray, matchVariable, matchString];
     for (var funcIndex in funcs) {
       match = funcs[funcIndex](string);
       if (match !== null) return match;
@@ -436,6 +436,43 @@
     return {len: offset, eval: evalObject, object: obj};
   }
 
+  function matchArray(string) {
+    if (string.substr(0,1) !== '[') return null;
+
+    var offset = 1;
+    var substring = string.substr(1);
+    var arr = [];
+    while (true) {
+      var spaces = skipSpaces(substring);
+      offset += spaces;
+      substring = substring.substr(spaces);
+
+      var expr = matchExpression(substring);
+      if (expr === null) return null;
+
+      arr.push(expr);
+      offset += expr.len;
+      substring = substring.substr(expr.len);
+
+      spaces = skipSpaces(substring);
+      offset += spaces;
+      substring = substring.substr(spaces);
+
+      var nextChar = substring.substr(0,1);
+      if (nextChar === ']') {
+        offset += 1;
+        substring = substring.substr(1);
+        break;
+      }
+      if (nextChar !== ',') return null;
+
+      offset += 1;
+      substring = substring.substr(1);
+    }
+
+    return {len: offset, eval: evalArray, array: arr};
+  }
+
   function evalNothing()            { return ''; }
   function evalEscVariableInsert()  { return '"+this.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
   function evalRawVariableInsert()  { return '"+' + this.sub.eval.apply(this.sub, arguments) + '+"'; }
@@ -513,11 +550,22 @@
   }
   function evalObject() {
     var result = [];
-    for (var key in this.object) {
-      var property = this.object[key];
+    var object = this.object;
+    for (var key in object) {
+      var property = object[key];
       result.push(key + ':' + property.eval.apply(property, arguments));
     }
     return '{' + result.join(',') + '}';
+  }
+  function evalArray() {
+    var result = [];
+    var array = this.array;
+    var length = array.length;
+    for (var i=0; i<length; i++) {
+      var element = array[i];
+      result.push(element.eval.apply(element, arguments));
+    }
+    return '[' + result.join(',') + ']';
   }
   function evalExpression() {
     var op = this.operands[0]

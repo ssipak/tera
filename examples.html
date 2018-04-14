@@ -57,6 +57,9 @@
         </table>
         <p>json: {json $}</p>
         <p>"{<}<{>}": "{<}", "{<}>{>}": "{>}"</p>
+        {each word in calc(["veni", "vidi", "vici"])}
+          {word}
+        {/each}
         <small>{$d.copyright}</small>
       </script>
     </div>
@@ -79,7 +82,8 @@
             'Афанасий Никитин': ['Москва', 'Санкт-Петербург'],
             'Волга': ['Санкт-Петербург', 'Москва', 'Нижний Новгород']
           },
-          func: function(a, b) { return a.length <= b ? 'town' : 'city' }
+          func: function(a, b) { return a.length <= b ? 'town' : 'city' },
+          calc: function(x) { return x }
         };
 
         var i = 10000, time = new Date;
