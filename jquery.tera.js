@@ -1,7 +1,7 @@
 /**
  * @name        Tera Templates
  * @description jQuery template plugin
- * @version     2.1.0
+ * @version     2.1.1
  * @author      Konstantin Krylov
  * @link        https://github.com/ssipak/tera/tree/2.0
  * @license     Public domain
@@ -245,21 +245,21 @@
   }
 
   function matchExpression(string) {
-    var match = matchGroup(string);
+    var match = matchOperand(string);
     if (match === null) return null;
 
-    var substringOffset = match.len
-      , substring = string.substr(substringOffset)
-      , operands = [match]
-      , operators = [];
+    var substringOffset = match.len;
+    var substring = string.substr(substringOffset);
+    var operands = [match];
+    var operators = [];
     while (true) {
-      var opOffset = skipSpaces(substring)
-        , opMatch = matchOperator(substring.substr(opOffset));
+      var opOffset = skipSpaces(substring);
+      var opMatch = matchOperator(substring.substr(opOffset));
       if (opMatch === null) break;
 
       opOffset += opMatch.len;
       opOffset += skipSpaces(substring.substr(opOffset));
-      match = matchGroup(substring.substr(opOffset));
+      match = matchOperand(substring.substr(opOffset));
       if (match === null) break;
 
       opOffset += match.len;
@@ -279,24 +279,22 @@
     return match === null ? null : {len: match[0].length, name: match[0]};
   }
 
-  function matchGroup(string) {
-    var match;
-    if (string.substr(0, 1) === '(') {
-      match = matchExpression(string.substr(1));
-      if (match !== null) return null;
-      if (string.substr(match.len + 1, 1) !== ')') return null;
-      return {len: match.len + 2, eval: evalGroup, sub: match};
-    }
-
-    var funcs = [matchObject, matchArray, matchVariable, matchString];
+  function matchOperand(string) {
+    var funcs = [matchGroup, matchObject, matchArray, matchVariable, matchString, matchNumber];
     for (var funcIndex in funcs) {
-      match = funcs[funcIndex](string);
+      var match = funcs[funcIndex](string);
       if (match !== null) return match;
     }
-
-    return matchNumber(string);
+    return null;
   }
 
+  function matchGroup(string) {
+    if (string.substr(0, 1) !== '(') return null;
+    var match = matchExpression(string.substr(1));
+    if (match === null) return null;
+    if (string.substr(match.len + 1, 1) !== ')') return null;
+    return {len: match.len + 2, eval: evalGroup, sub: match};
+  }
 
   function matchFunction(string) {
     if (string.substr(0, 1) !== '(') return null;

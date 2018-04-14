@@ -58,7 +58,7 @@
         <p>json: {json $}</p>
         <p>"{<}<{>}": "{<}", "{<}>{>}": "{>}"</p>
         {each word in calc(["veni", "vidi", "vici"])}
-          {word}
+          {calc(word + " " + (word.length-1))}
         {/each}
         <small>{$d.copyright}</small>
       </script>

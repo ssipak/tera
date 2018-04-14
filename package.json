@@ -1,6 +1,6 @@
 {
   "name": "tera",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Compiling javascript template engine",
   "main": "-",
   "scripts": {
