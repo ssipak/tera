@@ -1,7 +1,7 @@
 /**
  * @name        Tera Templates
  * @description jQuery template plugin
- * @version     2.1.1
+ * @version     2.1.2
  * @author      Konstantin Krylov
  * @link        https://github.com/ssipak/tera/tree/2.0
  * @license     Public domain
@@ -282,8 +282,10 @@
   function matchOperand(string) {
     var funcs = [matchGroup, matchObject, matchArray, matchVariable, matchString, matchNumber];
     for (var funcIndex in funcs) {
-      var match = funcs[funcIndex](string);
-      if (match !== null) return match;
+      if (funcs.hasOwnProperty(funcIndex)) {
+        var match = funcs[funcIndex](string);
+        if (match !== null) return match;
+      }
     }
     return null;
   }
@@ -550,8 +552,10 @@
     var result = [];
     var object = this.object;
     for (var key in object) {
-      var property = object[key];
-      result.push(key + ':' + property.eval.apply(property, arguments));
+      if (object.hasOwnProperty(key)) {
+        var property = object[key];
+        result.push(key + ':' + property.eval.apply(property, arguments));
+      }
     }
     return '{' + result.join(',') + '}';
   }

@@ -57,9 +57,11 @@
         </table>
         <p>json: {json $}</p>
         <p>"{<}<{>}": "{<}", "{<}>{>}": "{>}"</p>
-        {each word in calc(["veni", "vidi", "vici"])}
-          {calc(word + " " + (word.length-1))}
-        {/each}
+        <p>
+          {each word in calc(["veni", "vidi", "vici"])}
+            {calc(word + " " + (word.length-1))}
+          {/each}
+        </p>
         <small>{$d.copyright}</small>
       </script>
     </div>
