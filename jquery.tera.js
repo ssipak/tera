@@ -1,7 +1,7 @@
 /**
  * @name        Tera Templates
  * @description jQuery template plugin
- * @version     2.1.2
+ * @version     2.1.3
  * @author      Konstantin Krylov
  * @link        https://github.com/ssipak/tera/tree/2.0
  * @license     Public domain
@@ -37,7 +37,7 @@
     if (start[2]) {
       match = /^\}\s*/.exec(substring);
       if (match !== null) {
-        return {start: startOffset, end: substringOffset + match[0].length, eval: evalNothing};
+        return {start: startOffset, end: substringOffset + match[0].length, evaluate: evalNothing};
       }
     }
 
@@ -50,7 +50,7 @@
       }
     }
 
-    return {start: substringOffset, end: substringOffset, eval: evalNothing};
+    return {start: substringOffset, end: substringOffset, evaluate: evalNothing};
   }
 
   function matchTagEnd(string) {
@@ -77,7 +77,7 @@
     if (match[6]) { // {if-first} | {if-last}
       len = matchTagEnd(substring);
       if (len === null) return null;
-      return {len: substringOffset + len, eval: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
+      return {len: substringOffset + len, evaluate: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
     }
 
     var spaces = skipSpaces(substring);
@@ -90,7 +90,7 @@
       if (expr === null) return null;
       len = matchTagEnd(substring.substr(expr.len));
       if (len === null) return null;
-      return {len: substringOffset + expr.len + len, eval: evalIfEmpty, invert: invert, ifElse: ifElse, sub: expr};
+      return {len: substringOffset + expr.len + len, evaluate: evalIfEmpty, invert: invert, ifElse: ifElse, sub: expr};
     }
 
     expr = matchExpression(substring);
@@ -99,7 +99,7 @@
     if (!match[5]) { // {if expr}
       len = matchTagEnd(substring.substr(expr.len));
       if (len === null) return null;
-      return {len: substringOffset + expr.len + len, eval: evalIf, invert: invert, ifElse: ifElse, sub: expr};
+      return {len: substringOffset + expr.len + len, evaluate: evalIf, invert: invert, ifElse: ifElse, sub: expr};
     }
 
     // {if-key key in array_or_object} | {if-val[ue] value in array_or_object}
@@ -115,7 +115,7 @@
     if (sub === null) return null;
     len = matchTagEnd(substring.substr(sub.len));
     if (len === null) return null;
-    return {len: substringOffset + sub.len + len, eval: evalIfKeyOrValue, invert: invert, ifElse: ifElse, ifKey: match[5]==='key', expr: expr, sub: sub};
+    return {len: substringOffset + sub.len + len, evaluate: evalIfKeyOrValue, invert: invert, ifElse: ifElse, ifKey: match[5]==='key', expr: expr, sub: sub};
   }
 
   function matchEach(string) {
@@ -141,16 +141,16 @@
     var len = matchTagEnd(substring);
     if (len === null) return null;
 
-    return {len: substringOffset + len, eval: evalEach, sub: match, elem: elem, key: key, index: index};
+    return {len: substringOffset + len, evaluate: evalEach, sub: match, elem: elem, key: key, index: index};
   }
 
-  function generateMatchPrefix(prefixRegExp, eval) {
+  function generateMatchPrefix(prefixRegExp, evaluate) {
     return function(string) {
       var match = prefixRegExp.exec(string);
       if (match === null) return null;
       var len = matchTagEnd(string.substr(match[0].length));
       if (len === null) return null;
-      return {len: match[0].length + len, eval: eval};
+      return {len: match[0].length + len, evaluate: evaluate};
     };
   }
 
@@ -180,7 +180,7 @@
       substring = substring.substr(match.len);
     }
     if (len === null) return null;
-    return {len: offset, eval: evalTemplate, id: id, params: params};
+    return {len: offset, evaluate: evalTemplate, id: id, params: params};
   }
 
   function matchRawVariable(string) {
@@ -195,7 +195,7 @@
     offset += variable.len;
     var len = matchTagEnd(string.substr(offset));
     if (len === null) return null;
-    return {len: offset + len,  eval: evalRawVariableInsert, sub: variable};
+    return {len: offset + len,  evaluate: evalRawVariableInsert, sub: variable};
   }
 
   function matchEscVariable(string) {
@@ -213,7 +213,7 @@
     offset += variable.len;
     var len = matchTagEnd(string.substr(offset));
     if (len === null) return null;
-    return {len: offset + len, eval: evalEscVariableInsert, sub: variable};
+    return {len: offset + len, evaluate: evalEscVariableInsert, sub: variable};
   }
 
   function matchJson(string) {
@@ -241,7 +241,7 @@
     offset += variable.len;
     var len = matchTagEnd(string.substr(offset));
     if (len === null) return null;
-    return {len: offset + len, eval: isRaw ? evalRawJsonInsert : evalEscJsonInsert, sub: variable};
+    return {len: offset + len, evaluate: isRaw ? evalRawJsonInsert : evalEscJsonInsert, sub: variable};
   }
 
   function matchExpression(string) {
@@ -271,7 +271,7 @@
     }
     return operands.length === 1
       ? match
-      : {len: substringOffset, eval: evalExpression, operators: operators, operands: operands};
+      : {len: substringOffset, evaluate: evalExpression, operators: operators, operands: operands};
   }
 
   function matchOperator(string) {
@@ -295,7 +295,7 @@
     var match = matchExpression(string.substr(1));
     if (match === null) return null;
     if (string.substr(match.len + 1, 1) !== ')') return null;
-    return {len: match.len + 2, eval: evalGroup, sub: match};
+    return {len: match.len + 2, evaluate: evalGroup, sub: match};
   }
 
   function matchFunction(string) {
@@ -303,7 +303,7 @@
     var args = [];
     var substringOffset = 1 + skipSpaces(string.substr(1));
     var substring = string.substr(substringOffset);
-    if (substring.substr(0, 1) === ')') return {len: substringOffset+1, eval: evalFunction, args: args};
+    if (substring.substr(0, 1) === ')') return {len: substringOffset+1, evaluate: evalFunction, args: args};
 
     var match = matchExpression(substring);
     if (match === null) return null;
@@ -333,19 +333,19 @@
       substringOffset += spaces;
       substring = substring.substr(spaces);
     }
-    return {len: substringOffset+1, eval: evalFunction, args: args};
+    return {len: substringOffset+1, evaluate: evalFunction, args: args};
   }
 
   function matchString(string) {
     var match = /^(['"])((?!\1)[^\\]|\\.)*\1/.exec(string);
     if (match === null) return match;
-    return {len: match[0].length, eval: evalString, string: match[0]};
+    return {len: match[0].length, evaluate: evalString, string: match[0]};
   }
 
   function matchNumber(string) {
     var match = /^(-?)(\d+|0)(.\d+)?/.exec(string);
     if (match === null) return null;
-    return {len: match[0].length, eval: evalNumber, number: match[0]};
+    return {len: match[0].length, evaluate: evalNumber, number: match[0]};
   }
 
   function matchVariable(string) {
@@ -372,7 +372,7 @@
       }
       match = /^\.((?=[^\d])\w+)/.exec(substring);
       if (match !== null) {
-        subs.push({eval: evalSubvariable, name: match[1]});
+        subs.push({evaluate: evalSubvariable, name: match[1]});
         var len = match[0].length;
         substringOffset += len;
         substring = substring.substr(len);
@@ -381,7 +381,7 @@
       break;
     }
 
-    return {len: substringOffset, eval: evalVariable, name: name, subs: subs};
+    return {len: substringOffset, evaluate: evalVariable, name: name, subs: subs};
   }
 
   function matchVariableComponent(string) {
@@ -389,7 +389,7 @@
     var sub = matchExpression(string.substr(1));
     if (sub === null) return null;
     if (string.substr(1 + sub.len, 1) !== ']') return null;
-    return {len: 2 + sub.len, eval: evalVariableComponent, sub: sub};
+    return {len: 2 + sub.len, evaluate: evalVariableComponent, sub: sub};
   }
 
   function matchObject(string) {
@@ -418,7 +418,7 @@
         offset += spaces;
         substring = substring.substr(spaces);
       } else {
-        obj[key] = {len: 0, eval: evalVariable, name: key, subs: []};
+        obj[key] = {len: 0, evaluate: evalVariable, name: key, subs: []};
       }
 
       var nextChar = substring.substr(0,1);
@@ -433,7 +433,7 @@
       substring = substring.substr(1);
     }
 
-    return {len: offset, eval: evalObject, object: obj};
+    return {len: offset, evaluate: evalObject, object: obj};
   }
 
   function matchArray(string) {
@@ -470,26 +470,26 @@
       substring = substring.substr(1);
     }
 
-    return {len: offset, eval: evalArray, array: arr};
+    return {len: offset, evaluate: evalArray, array: arr};
   }
 
   function evalNothing()            { return ''; }
-  function evalEscVariableInsert()  { return '"+this.escape(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
-  function evalRawVariableInsert()  { return '"+' + this.sub.eval.apply(this.sub, arguments) + '+"'; }
-  function evalRawJsonInsert()      { return '"+this.json(' + this.sub.eval.apply(this.sub, arguments) + ')+"'; }
-  function evalEscJsonInsert()      { return '"+this.escape(this.json(' + this.sub.eval.apply(this.sub, arguments) + '))+"'; }
+  function evalEscVariableInsert()  { return '"+this.escape(' + this.sub.evaluate.apply(this.sub, arguments) + ')+"'; }
+  function evalRawVariableInsert()  { return '"+' + this.sub.evaluate.apply(this.sub, arguments) + '+"'; }
+  function evalRawJsonInsert()      { return '"+this.json(' + this.sub.evaluate.apply(this.sub, arguments) + ')+"'; }
+  function evalEscJsonInsert()      { return '"+this.escape(this.json(' + this.sub.evaluate.apply(this.sub, arguments) + '))+"'; }
   function evalVariable()           {
     var result = (/^\$/.test(this.name) ? this.name : 'local.' + this.name)
       , subsCount = this.subs.length;
     for (var i=0; i<subsCount; i++) {
       var sub = this.subs[i];
-      result += sub.eval.apply(sub, arguments);
+      result += sub.evaluate.apply(sub, arguments);
     }
     return result;
   }
   function evalSubvariable()        { return '.' + this.name; }
-  function evalVariableComponent()  { return '[' + this.sub.eval.apply(this.sub, arguments) + ']'; }
-  function evalGroup()              { return '(' + this.sub.eval.apply(this.sub, arguments) + ')'; }
+  function evalVariableComponent()  { return '[' + this.sub.evaluate.apply(this.sub, arguments) + ']'; }
+  function evalGroup()              { return '(' + this.sub.evaluate.apply(this.sub, arguments) + ')'; }
   function evalString()             { return this.string; }
   function evalNumber()             { return this.number; }
 
@@ -507,18 +507,18 @@
   }
   function evalIfEmpty() {
     return genEvalIf(this.ifElse,
-        '$t=' + this.sub.eval.apply(this.sub, arguments) + ','
+        '$t=' + this.sub.evaluate.apply(this.sub, arguments) + ','
       + (this.invert ? '!' : '')
       + '(jQuery.isArray($t)?$t.length===0:jQuery.isEmptyObject($t))'
     );
   }
   function evalIf() {
-    return genEvalIf(this.ifElse, (this.invert ? '!' : '') + '(' + this.sub.eval.apply(this.sub, arguments) + ')');
+    return genEvalIf(this.ifElse, (this.invert ? '!' : '') + '(' + this.sub.evaluate.apply(this.sub, arguments) + ')');
   }
   function evalIfKeyOrValue() {
     return genEvalIf(this.ifElse,
-        '$t=' + this.sub.eval.apply(this.sub, arguments) + ','
-      + '$e=' + this.expr.eval.apply(this.expr, arguments) + ','
+        '$t=' + this.sub.evaluate.apply(this.sub, arguments) + ','
+      + '$e=' + this.expr.evaluate.apply(this.expr, arguments) + ','
       + (this.invert ? '!' : '')
       + (this.ifKey
           ? 'jQuery.isArray($t)?$e>=0||$e<$t.length:jQuery.inArray($e,this.keys($t))!==-1'
@@ -527,7 +527,7 @@
   }
   function evalEach() {
     var result
-      = '";$it=' + this.sub.eval.apply(this.sub, arguments) + ';'
+      = '";$it=' + this.sub.evaluate.apply(this.sub, arguments) + ';'
       + '$t=this.proto(local);'
       + '(function($$,local){'
       + 'var $,$k,$keys,$i=0,'
@@ -544,7 +544,7 @@
       , paramsStr = '';
     for (var i=0; i<paramsLen; i++) {
       var param = this.params[i];
-      paramsStr += ',' + param.eval.apply(param, arguments);
+      paramsStr += ',' + param.evaluate.apply(param, arguments);
     }
     return '"+this.byId("' + this.id + '"' + paramsStr + ')+"';
   }
@@ -554,7 +554,7 @@
     for (var key in object) {
       if (object.hasOwnProperty(key)) {
         var property = object[key];
-        result.push(key + ':' + property.eval.apply(property, arguments));
+        result.push(key + ':' + property.evaluate.apply(property, arguments));
       }
     }
     return '{' + result.join(',') + '}';
@@ -565,17 +565,17 @@
     var length = array.length;
     for (var i=0; i<length; i++) {
       var element = array[i];
-      result.push(element.eval.apply(element, arguments));
+      result.push(element.evaluate.apply(element, arguments));
     }
     return '[' + result.join(',') + ']';
   }
   function evalExpression() {
     var op = this.operands[0]
-      , result = op.eval.apply(op, arguments)
+      , result = op.evaluate.apply(op, arguments)
       , c = this.operators.length;
     for (var i=0; i<c; i++) {
       op = this.operands[i+1];
-      result += this.operators[i] + op.eval.apply(op, arguments);
+      result += this.operators[i] + op.evaluate.apply(op, arguments);
     }
     return result;
   }
@@ -583,7 +583,7 @@
     var args = [], argCount = this.args.length;
     for (var i=0; i<argCount; i++) {
       var arg = this.args[i];
-      args.push(arg.eval.apply(arg, arguments));
+      args.push(arg.evaluate.apply(arg, arguments));
     }
     return '(' + args.join(',') + ')';
   }
@@ -595,26 +595,26 @@
     var result      = '', stmt
       , blockStack  = [], linesPassed = 0;
     while (stmt = searchTag(template)) {
-      if (stmt.eval === evalEach) {
-        blockStack.push(stmt.eval);
+      if (stmt.evaluate === evalEach) {
+        blockStack.push(stmt.evaluate);
       }
-      else if ($.inArray(stmt.eval, listOfEvalIf) !== -1) {
+      else if ($.inArray(stmt.evaluate, listOfEvalIf) !== -1) {
         if (stmt.ifElse && $.inArray(blockStack.pop(), listOfEvalIf) === -1) {
           throw new Error('Unexpected {else-if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
         }
-        blockStack.push(stmt.eval);
+        blockStack.push(stmt.evaluate);
       }
-      else if (stmt.eval === evalCloseEach) {
+      else if (stmt.evaluate === evalCloseEach) {
         if (blockStack.pop() !== evalEach) {
           throw new Error('Unexpected {/each} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
         }
       }
-      else if (stmt.eval === evalCloseIf) {
+      else if (stmt.evaluate === evalCloseIf) {
         if ($.inArray(blockStack.pop(), listOfEvalIf) === -1) {
           throw new Error('Unexpected {/if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
         }
       }
-      result      += escString(template.substr(0, stmt.start)) + stmt.eval();
+      result      += escString(template.substr(0, stmt.start)) + stmt.evaluate();
       linesPassed += countLines(template.substr(0, stmt.end));
       template    = template.substr(stmt.end);
     }
