@@ -1,7 +1,7 @@
 /**
  * @name        Tera Templates
  * @description jQuery template plugin
- * @version     2.1.3
+ * @version     2.1.4
  * @author      Konstantin Krylov
  * @link        https://github.com/ssipak/tera/tree/2.0
  * @license     Public domain
@@ -50,7 +50,7 @@
       }
     }
 
-    return {start: substringOffset, end: substringOffset, evaluate: evalNothing};
+    throw new SyntaxError('Unparsed tag: ' + substring.substr(0, 15));
   }
 
   function matchTagEnd(string) {
@@ -298,12 +298,12 @@
     return {len: match.len + 2, evaluate: evalGroup, sub: match};
   }
 
-  function matchFunction(string) {
+  function matchCall(string) {
     if (string.substr(0, 1) !== '(') return null;
     var args = [];
     var substringOffset = 1 + skipSpaces(string.substr(1));
     var substring = string.substr(substringOffset);
-    if (substring.substr(0, 1) === ')') return {len: substringOffset+1, evaluate: evalFunction, args: args};
+    if (substring.substr(0, 1) === ')') return {len: substringOffset+1, evaluate: evalCall, args: args};
 
     var match = matchExpression(substring);
     if (match === null) return null;
@@ -333,7 +333,7 @@
       substringOffset += spaces;
       substring = substring.substr(spaces);
     }
-    return {len: substringOffset+1, evaluate: evalFunction, args: args};
+    return {len: substringOffset+1, evaluate: evalCall, args: args};
   }
 
   function matchString(string) {
@@ -356,14 +356,14 @@
       , substring = string.substr(substringOffset)
       , subs = [], sub;
     while (true) {
-      sub = matchVariableComponent(substring);
+      sub = matchArrayAccess(substring);
       if (sub !== null) {
         subs.push(sub);
         substringOffset += sub.len;
         substring = substring.substr(sub.len);
         continue;
       }
-      sub = matchFunction(substring);
+      sub = matchCall(substring);
       if (sub !== null) {
         subs.push(sub);
         substringOffset += sub.len;
@@ -372,7 +372,7 @@
       }
       match = /^\.((?=[^\d])\w+)/.exec(substring);
       if (match !== null) {
-        subs.push({evaluate: evalSubvariable, name: match[1]});
+        subs.push({evaluate: evalPropertyAccess, name: match[1]});
         var len = match[0].length;
         substringOffset += len;
         substring = substring.substr(len);
@@ -384,12 +384,12 @@
     return {len: substringOffset, evaluate: evalVariable, name: name, subs: subs};
   }
 
-  function matchVariableComponent(string) {
+  function matchArrayAccess(string) {
     if (string.substr(0,1) !== '[') return null;
     var sub = matchExpression(string.substr(1));
     if (sub === null) return null;
     if (string.substr(1 + sub.len, 1) !== ']') return null;
-    return {len: 2 + sub.len, evaluate: evalVariableComponent, sub: sub};
+    return {len: 2 + sub.len, evaluate: evalArrayAccess, sub: sub};
   }
 
   function matchObject(string) {
@@ -487,8 +487,8 @@
     }
     return result;
   }
-  function evalSubvariable()        { return '.' + this.name; }
-  function evalVariableComponent()  { return '[' + this.sub.evaluate.apply(this.sub, arguments) + ']'; }
+  function evalPropertyAccess()     { return '.' + this.name; }
+  function evalArrayAccess()        { return '[' + this.sub.evaluate.apply(this.sub, arguments) + ']'; }
   function evalGroup()              { return '(' + this.sub.evaluate.apply(this.sub, arguments) + ')'; }
   function evalString()             { return this.string; }
   function evalNumber()             { return this.number; }
@@ -579,7 +579,7 @@
     }
     return result;
   }
-  function evalFunction() {
+  function evalCall() {
     var args = [], argCount = this.args.length;
     for (var i=0; i<argCount; i++) {
       var arg = this.args[i];

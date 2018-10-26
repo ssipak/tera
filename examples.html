@@ -64,10 +64,21 @@
         </p>
         <small>{$d.copyright}</small>
       </script>
+
+      <script type="text/template-tera" id="performance_template">
+        <dl>
+          <dt>Iterations' count:</dt>
+          <dd>{iteration_count}</dd>
+
+          <dt>Time elapsed:</dt>
+          <dd>{time_elapsed} ms</dd>
+        </dl>
+      </script>
     </div>
+
     <script type="text/javascript">
       $(document).ready(function() {
-        var data = {
+        var distanceTableData = {
           title: 'Расстояния между <strike>населенными пунктами</strike> городами',
           stations: [
             {name: 'Владивосток', id: 'vl'},
@@ -88,13 +99,19 @@
           calc: function(x) { return x }
         };
 
-        var i = 10000, time = new Date;
-        while (i-->0)
+
+        var iteration_count = 10000;
+        var time = Date.now();
+        for (var i=0; i<iteration_count; i++)
         {
-          $.tera.byId('distance_table_template', data);
+          $.tera.byId('distance_table_template', distanceTableData);
         }
-        console.log(new Date - time);
-        $('#distance_table').html($.tera.byId('distance_table_template', data));
+
+        $('#distance_table').html(
+          $.tera.byId('distance_table_template', distanceTableData)
+          +
+          $.tera.byId('performance_template', {iteration_count: iteration_count, time_elapsed: Date.now() - time})
+        );
       });
     </script>
   </body>
