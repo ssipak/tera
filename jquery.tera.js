@@ -1,198 +1,664 @@
-// Tera Templates (Konstantin Krylov)
-(function($){
+/**
+ * @name        Tera Templates
+ * @description jQuery template plugin
+ * @version     2.1.4
+ * @author      Konstantin Krylov
+ * @link        https://github.com/ssipak/tera/tree/2.0
+ * @license     Public domain
+ */
+(function($) {
+  var STATEMENTS = [
+        generateMatchPrefix(/^</,             evalOpenCurly),
+        generateMatchPrefix(/^>/,             evalClosedCurly),
+        generateMatchPrefix(/^else/,          evalElse),
+        generateMatchPrefix(/^\/(if|unless)/, evalCloseIf),
+        generateMatchPrefix(/^\/each/,        evalCloseEach),
+
+        matchEach,          // {each [element[ as key][ at index] in ]array_or_hash}
+        matchOpenCondition, // {[else-](if[-not]|unless)[-empty|-first|-last] [expr]}
+        matchTemplate,      // {tmpl template_name}
+        matchRawVariable,   // {raw var}
+        matchEscVariable,   // {var.key[var2.key2[var3]].key4} | {esc var}
+        matchJson           // {[raw-]json var}
+      ]
+    , STATEMENTS_COUNT = STATEMENTS.length;
+
+  // Ищем выражение
+  function searchTag(string) {
+    var start = /(\s*)\{(\*?)/.exec(string);
+    if (start === null) return null;
+
+    var substringOffset = start.index + start[0].length
+      , substring       = string.substr(substringOffset)
+      , startOffset     = (start[2] ? 0 : start[1].length) + start.index
+      , match;
+
+    // Выражение {*} ?
+    if (start[2]) {
+      match = /^\}\s*/.exec(substring);
+      if (match !== null) {
+        return {start: startOffset, end: substringOffset + match[0].length, evaluate: evalNothing};
+      }
+    }
+
+    for (var stmtInd=0; stmtInd<STATEMENTS_COUNT; stmtInd++) {
+      match = STATEMENTS[stmtInd](substring);
+      if (match !== null) {
+        match.start = startOffset;
+        match.end   = match.len + substringOffset;
+        return match;
+      }
+    }
+
+    throw new SyntaxError('Unparsed tag: ' + substring.substr(0, 15));
+  }
+
+  function matchTagEnd(string) {
+    var match = /^(\s*(\*?)\})\s*/.exec(string);
+    if (match === null) return null;
+    return match[2] ? match[0].length : match[1].length;
+  }
+
+  function skipSpaces(string) {
+    return /^\s*/.exec(string)[0].length;
+  }
+
+  function matchOpenCondition(string) {
+    //            1       2  3              4 5                     6
+    var match = /^(else-)?(if(-not)?|unless)(-(empty|key|val(?:ue)?|(first|last)))?/.exec(string);
+    if (match === null) return null;
+
+    var substringOffset = match[0].length
+      , substring       = string.substr(substringOffset)
+      , ifElse          = match[1]
+      , invert          = match[2] === 'if-not' || match[2] === 'unless'
+      , len, expr;
+
+    if (match[6]) { // {if-first} | {if-last}
+      len = matchTagEnd(substring);
+      if (len === null) return null;
+      return {len: substringOffset + len, evaluate: evalIfFirstOrLast, invert: invert, ifElse: ifElse, pos: match[6]};
+    }
+
+    var spaces = skipSpaces(substring);
+    if (spaces === 0) return null;
+    substringOffset += spaces;
+    substring = substring.substr(spaces);
+
+    if (match[5] === 'empty') { // {if-empty array_or_object}
+      expr = matchVariable(substring);
+      if (expr === null) return null;
+      len = matchTagEnd(substring.substr(expr.len));
+      if (len === null) return null;
+      return {len: substringOffset + expr.len + len, evaluate: evalIfEmpty, invert: invert, ifElse: ifElse, sub: expr};
+    }
+
+    expr = matchExpression(substring);
+    if (expr === null) return null;
+
+    if (!match[5]) { // {if expr}
+      len = matchTagEnd(substring.substr(expr.len));
+      if (len === null) return null;
+      return {len: substringOffset + expr.len + len, evaluate: evalIf, invert: invert, ifElse: ifElse, sub: expr};
+    }
+
+    // {if-key key in array_or_object} | {if-val[ue] value in array_or_object}
+    substringOffset += expr.len;
+    substring = substring.substr(expr.len);
+    var delimiter = substring.match(/^\s+in\s+/);
+    if (delimiter === null) return null;
+    delimiter = delimiter[0].length;
+    substringOffset += delimiter;
+    substring = substring.substr(delimiter);
+
+    var sub = matchVariable(substring);
+    if (sub === null) return null;
+    len = matchTagEnd(substring.substr(sub.len));
+    if (len === null) return null;
+    return {len: substringOffset + sub.len + len, evaluate: evalIfKeyOrValue, invert: invert, ifElse: ifElse, ifKey: match[5]==='key', expr: expr, sub: sub};
+  }
+
+  function matchEach(string) {
+    //                1   2          3        4            5        6
+    var match = /^each(\s+((?!\d)\w+)(\s+as\s+((?!\d)\w+))?(\s+at\s+((?!\d)\w+))? in)?/.exec(string);
+    if (match === null) return null;
+
+    var elem = match[2]
+      , key = match[4]
+      , index = match[6]
+      , substringOffset = match[0].length
+      , substring = string.substr(substringOffset)
+      , spaces = skipSpaces(substring);
+    if (spaces === 0) return null;
+    substringOffset += spaces;
+    substring = substring.substr(spaces);
+    match = matchVariable(substring);
+    if (match === null) return null;
+
+    substringOffset += match.len;
+    substring = substring.substr(match.len);
+    var len = matchTagEnd(substring);
+    if (len === null) return null;
+
+    return {len: substringOffset + len, evaluate: evalEach, sub: match, elem: elem, key: key, index: index};
+  }
+
+  function generateMatchPrefix(prefixRegExp, evaluate) {
+    return function(string) {
+      var match = prefixRegExp.exec(string);
+      if (match === null) return null;
+      var len = matchTagEnd(string.substr(match[0].length));
+      if (len === null) return null;
+      return {len: match[0].length + len, evaluate: evaluate};
+    };
+  }
+
+  function matchTemplate(string) {
+    var match = /^tmpl ([\w-]+)/.exec(string);
+    if (match === null) return null;
+    var id = match[1]
+      , params = []
+      , offset = match[0].length
+      , substring = string.substr(offset)
+      , len;
+
+    while (true) {
+      len = matchTagEnd(substring);
+      if (len !== null) {
+        offset += len;
+        break;
+      }
+      var spaces = skipSpaces(substring);
+      offset += spaces;
+      substring = substring.substr(spaces);
+      match = matchExpression(substring);
+      if (match === null) return null;
+
+      params.push(match);
+      offset += match.len;
+      substring = substring.substr(match.len);
+    }
+    if (len === null) return null;
+    return {len: offset, evaluate: evalTemplate, id: id, params: params};
+  }
+
+  function matchRawVariable(string) {
+    if (string.substr(0, 3) !== 'raw') return null;
+    var spaces = skipSpaces(string.substr(3));
+    if (spaces < 1) return null;
+
+    var offset = 3 + spaces;
+    var variable = matchVariable(string.substr(offset));
+    if (variable === null) return null;
+
+    offset += variable.len;
+    var len = matchTagEnd(string.substr(offset));
+    if (len === null) return null;
+    return {len: offset + len,  evaluate: evalRawVariableInsert, sub: variable};
+  }
+
+  function matchEscVariable(string) {
+    var offset = 0;
+    if (string.substr(0, 3) === 'esc') {
+      var spaces = skipSpaces(string.substr(3));
+      if (spaces >= 1) {
+        offset = 3 + spaces;
+      }
+    }
+
+    var variable = matchVariable(string.substr(offset));
+    if (variable === null) return null;
+
+    offset += variable.len;
+    var len = matchTagEnd(string.substr(offset));
+    if (len === null) return null;
+    return {len: offset + len, evaluate: evalEscVariableInsert, sub: variable};
+  }
+
+  function matchJson(string) {
+    var offset = 0;
+    var isRaw = false;
+    if (string.substr(0, 4) === 'json') {
+      var spaces = skipSpaces(string.substr(4));
+      if (spaces === 0) {
+        return null;
+      }
+      offset = 4 + spaces;
+    }
+    else if (string.substr(0, 8) === 'raw-json') {
+      var spaces = skipSpaces(string.substr(8));
+      if (spaces === 0) {
+        return null;
+      }
+      offset = 8 + spaces;
+      isRaw = true;
+    }
+
+    var variable = matchVariable(string.substr(offset));
+    if (variable === null) return null;
+
+    offset += variable.len;
+    var len = matchTagEnd(string.substr(offset));
+    if (len === null) return null;
+    return {len: offset + len, evaluate: isRaw ? evalRawJsonInsert : evalEscJsonInsert, sub: variable};
+  }
+
+  function matchExpression(string) {
+    var match = matchOperand(string);
+    if (match === null) return null;
+
+    var substringOffset = match.len;
+    var substring = string.substr(substringOffset);
+    var operands = [match];
+    var operators = [];
+    while (true) {
+      var opOffset = skipSpaces(substring);
+      var opMatch = matchOperator(substring.substr(opOffset));
+      if (opMatch === null) break;
+
+      opOffset += opMatch.len;
+      opOffset += skipSpaces(substring.substr(opOffset));
+      match = matchOperand(substring.substr(opOffset));
+      if (match === null) break;
+
+      opOffset += match.len;
+      operators.push(opMatch.name);
+      operands.push(match);
+
+      substringOffset += opOffset;
+      substring = substring.substr(opOffset);
+    }
+    return operands.length === 1
+      ? match
+      : {len: substringOffset, evaluate: evalExpression, operators: operators, operands: operands};
+  }
+
+  function matchOperator(string) {
+    var match = /^([!=<>]=|[<>+-]|&&|\|\|)/.exec(string);
+    return match === null ? null : {len: match[0].length, name: match[0]};
+  }
+
+  function matchOperand(string) {
+    var funcs = [matchGroup, matchObject, matchArray, matchVariable, matchString, matchNumber];
+    for (var funcIndex in funcs) {
+      if (funcs.hasOwnProperty(funcIndex)) {
+        var match = funcs[funcIndex](string);
+        if (match !== null) return match;
+      }
+    }
+    return null;
+  }
+
+  function matchGroup(string) {
+    if (string.substr(0, 1) !== '(') return null;
+    var match = matchExpression(string.substr(1));
+    if (match === null) return null;
+    if (string.substr(match.len + 1, 1) !== ')') return null;
+    return {len: match.len + 2, evaluate: evalGroup, sub: match};
+  }
+
+  function matchCall(string) {
+    if (string.substr(0, 1) !== '(') return null;
+    var args = [];
+    var substringOffset = 1 + skipSpaces(string.substr(1));
+    var substring = string.substr(substringOffset);
+    if (substring.substr(0, 1) === ')') return {len: substringOffset+1, evaluate: evalCall, args: args};
+
+    var match = matchExpression(substring);
+    if (match === null) return null;
+    args.push(match);
+    substringOffset += match.len;
+    substring = substring.substr(match.len);
+
+    var spaces = skipSpaces(substring);
+    substringOffset += spaces;
+    substring = substring.substr(spaces);
+
+    while (true) {
+      var nextChar = substring.substr(0,1);
+      if (nextChar === ')') break;
+      if (nextChar !== ',') return null;
+      var argOffset = 1 + skipSpaces(substring.substr(1));
+
+      match = matchExpression(substring.substr(argOffset));
+      if (match === null) return null;
+      args.push(match);
+
+      argOffset += match.len;
+      substringOffset += argOffset;
+      substring = substring.substr(argOffset);
+
+      spaces = skipSpaces(substring);
+      substringOffset += spaces;
+      substring = substring.substr(spaces);
+    }
+    return {len: substringOffset+1, evaluate: evalCall, args: args};
+  }
+
+  function matchString(string) {
+    var match = /^(['"])((?!\1)[^\\]|\\.)*\1/.exec(string);
+    if (match === null) return match;
+    return {len: match[0].length, evaluate: evalString, string: match[0]};
+  }
+
+  function matchNumber(string) {
+    var match = /^(-?)(\d+|0)(.\d+)?/.exec(string);
+    if (match === null) return null;
+    return {len: match[0].length, evaluate: evalNumber, number: match[0]};
+  }
+
+  function matchVariable(string) {
+    var match = /^(\$(keys|[$ikld]|)|(?!\d)\w+)/.exec(string);
+    if (match === null) return null;
+    var name = match[1]
+      , substringOffset = match[0].length
+      , substring = string.substr(substringOffset)
+      , subs = [], sub;
+    while (true) {
+      sub = matchArrayAccess(substring);
+      if (sub !== null) {
+        subs.push(sub);
+        substringOffset += sub.len;
+        substring = substring.substr(sub.len);
+        continue;
+      }
+      sub = matchCall(substring);
+      if (sub !== null) {
+        subs.push(sub);
+        substringOffset += sub.len;
+        substring = substring.substr(sub.len);
+        continue;
+      }
+      match = /^\.((?=[^\d])\w+)/.exec(substring);
+      if (match !== null) {
+        subs.push({evaluate: evalPropertyAccess, name: match[1]});
+        var len = match[0].length;
+        substringOffset += len;
+        substring = substring.substr(len);
+        continue;
+      }
+      break;
+    }
+
+    return {len: substringOffset, evaluate: evalVariable, name: name, subs: subs};
+  }
+
+  function matchArrayAccess(string) {
+    if (string.substr(0,1) !== '[') return null;
+    var sub = matchExpression(string.substr(1));
+    if (sub === null) return null;
+    if (string.substr(1 + sub.len, 1) !== ']') return null;
+    return {len: 2 + sub.len, evaluate: evalArrayAccess, sub: sub};
+  }
+
+  function matchObject(string) {
+    if (string.substr(0,1) !== '{') return null;
+
+    var offset = 1
+      , substring = string.substr(1)
+      , obj = {};
+    while (true) {
+      var keyMatch = /^\s*(\w+)\s*(:?)\s*/.exec(substring);
+      if (keyMatch === null) return null;
+      var key = keyMatch[1]
+        , colon = keyMatch[2]
+        , len = keyMatch[0].length;
+      offset += len;
+      substring = substring.substr(len);
+
+      if (colon) {
+        var expr = matchExpression(substring);
+        if (expr === null) return null;
+
+        obj[key] = expr;
+        offset += expr.len;
+        substring = substring.substr(expr.len);
+        var spaces = skipSpaces(substring);
+        offset += spaces;
+        substring = substring.substr(spaces);
+      } else {
+        obj[key] = {len: 0, evaluate: evalVariable, name: key, subs: []};
+      }
+
+      var nextChar = substring.substr(0,1);
+      if (nextChar === '}') {
+        offset += 1;
+        substring = substring.substr(1);
+        break;
+      }
+      if (nextChar !== ',') return null;
+
+      offset += 1;
+      substring = substring.substr(1);
+    }
+
+    return {len: offset, evaluate: evalObject, object: obj};
+  }
+
+  function matchArray(string) {
+    if (string.substr(0,1) !== '[') return null;
+
+    var offset = 1;
+    var substring = string.substr(1);
+    var arr = [];
+    while (true) {
+      var spaces = skipSpaces(substring);
+      offset += spaces;
+      substring = substring.substr(spaces);
+
+      var expr = matchExpression(substring);
+      if (expr === null) return null;
+
+      arr.push(expr);
+      offset += expr.len;
+      substring = substring.substr(expr.len);
+
+      spaces = skipSpaces(substring);
+      offset += spaces;
+      substring = substring.substr(spaces);
+
+      var nextChar = substring.substr(0,1);
+      if (nextChar === ']') {
+        offset += 1;
+        substring = substring.substr(1);
+        break;
+      }
+      if (nextChar !== ',') return null;
+
+      offset += 1;
+      substring = substring.substr(1);
+    }
+
+    return {len: offset, evaluate: evalArray, array: arr};
+  }
+
+  function evalNothing()            { return ''; }
+  function evalEscVariableInsert()  { return '"+this.escape(' + this.sub.evaluate.apply(this.sub, arguments) + ')+"'; }
+  function evalRawVariableInsert()  { return '"+' + this.sub.evaluate.apply(this.sub, arguments) + '+"'; }
+  function evalRawJsonInsert()      { return '"+this.json(' + this.sub.evaluate.apply(this.sub, arguments) + ')+"'; }
+  function evalEscJsonInsert()      { return '"+this.escape(this.json(' + this.sub.evaluate.apply(this.sub, arguments) + '))+"'; }
+  function evalVariable()           {
+    var result = (/^\$/.test(this.name) ? this.name : 'local.' + this.name)
+      , subsCount = this.subs.length;
+    for (var i=0; i<subsCount; i++) {
+      var sub = this.subs[i];
+      result += sub.evaluate.apply(sub, arguments);
+    }
+    return result;
+  }
+  function evalPropertyAccess()     { return '.' + this.name; }
+  function evalArrayAccess()        { return '[' + this.sub.evaluate.apply(this.sub, arguments) + ']'; }
+  function evalGroup()              { return '(' + this.sub.evaluate.apply(this.sub, arguments) + ')'; }
+  function evalString()             { return this.string; }
+  function evalNumber()             { return this.number; }
+
+  function evalOpenCurly()          { return '{'; }
+  function evalClosedCurly()        { return '}'; }
+  function evalElse()               { return '";}else{retval+="'; }
+  function evalCloseIf()            { return '"}retval+="'; }
+  function evalCloseEach()          { return '";$i++}}).call(this,$it,$t);retval+="'; }
+
+  function genEvalIf(ifElse, condition) {
+    return '";' + (ifElse ? '}else ' : '') + 'if(' + condition + '){retval+="';
+  }
+  function evalIfFirstOrLast() {
+    return genEvalIf(this.ifElse, '$i' + (this.invert ? '!=' : '==') + (this.pos == 'first' ? '0' : '$l-1'));
+  }
+  function evalIfEmpty() {
+    return genEvalIf(this.ifElse,
+        '$t=' + this.sub.evaluate.apply(this.sub, arguments) + ','
+      + (this.invert ? '!' : '')
+      + '(jQuery.isArray($t)?$t.length===0:jQuery.isEmptyObject($t))'
+    );
+  }
+  function evalIf() {
+    return genEvalIf(this.ifElse, (this.invert ? '!' : '') + '(' + this.sub.evaluate.apply(this.sub, arguments) + ')');
+  }
+  function evalIfKeyOrValue() {
+    return genEvalIf(this.ifElse,
+        '$t=' + this.sub.evaluate.apply(this.sub, arguments) + ','
+      + '$e=' + this.expr.evaluate.apply(this.expr, arguments) + ','
+      + (this.invert ? '!' : '')
+      + (this.ifKey
+          ? 'jQuery.isArray($t)?$e>=0||$e<$t.length:jQuery.inArray($e,this.keys($t))!==-1'
+          : 'jQuery.inArray($e,this.values($t))!==-1')
+    );
+  }
+  function evalEach() {
+    var result
+      = '";$it=' + this.sub.evaluate.apply(this.sub, arguments) + ';'
+      + '$t=this.proto(local);'
+      + '(function($$,local){'
+      + 'var $,$k,$keys,$i=0,'
+      + '$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
+      + 'while($i<$l){'
+      + '$=(($k=$keys?$keys[$i]:$i),$$[$k]);';
+    if (this.elem)  {result += 'local.' + this.elem + '=$;';}
+    if (this.key)   {result += 'local.' + this.key + '=$k;';}
+    if (this.index) {result += 'local.' + this.index + '=$i;';}
+    return result + 'retval+="';
+  }
+  function evalTemplate() {
+    var paramsLen = this.params.length
+      , paramsStr = '';
+    for (var i=0; i<paramsLen; i++) {
+      var param = this.params[i];
+      paramsStr += ',' + param.evaluate.apply(param, arguments);
+    }
+    return '"+this.byId("' + this.id + '"' + paramsStr + ')+"';
+  }
+  function evalObject() {
+    var result = [];
+    var object = this.object;
+    for (var key in object) {
+      if (object.hasOwnProperty(key)) {
+        var property = object[key];
+        result.push(key + ':' + property.evaluate.apply(property, arguments));
+      }
+    }
+    return '{' + result.join(',') + '}';
+  }
+  function evalArray() {
+    var result = [];
+    var array = this.array;
+    var length = array.length;
+    for (var i=0; i<length; i++) {
+      var element = array[i];
+      result.push(element.evaluate.apply(element, arguments));
+    }
+    return '[' + result.join(',') + ']';
+  }
+  function evalExpression() {
+    var op = this.operands[0]
+      , result = op.evaluate.apply(op, arguments)
+      , c = this.operators.length;
+    for (var i=0; i<c; i++) {
+      op = this.operands[i+1];
+      result += this.operators[i] + op.evaluate.apply(op, arguments);
+    }
+    return result;
+  }
+  function evalCall() {
+    var args = [], argCount = this.args.length;
+    for (var i=0; i<argCount; i++) {
+      var arg = this.args[i];
+      args.push(arg.evaluate.apply(arg, arguments));
+    }
+    return '(' + args.join(',') + ')';
+  }
+
+  function countLines(str) { return (str.match(/\n/g)||[]).length; }
+
+  var listOfEvalIf = [evalIfFirstOrLast, evalIfEmpty, evalIf, evalIfKeyOrValue];
+  function genFuncCode(template) {
+    var result      = '', stmt
+      , blockStack  = [], linesPassed = 0;
+    while (stmt = searchTag(template)) {
+      if (stmt.evaluate === evalEach) {
+        blockStack.push(stmt.evaluate);
+      }
+      else if ($.inArray(stmt.evaluate, listOfEvalIf) !== -1) {
+        if (stmt.ifElse && $.inArray(blockStack.pop(), listOfEvalIf) === -1) {
+          throw new Error('Unexpected {else-if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+        }
+        blockStack.push(stmt.evaluate);
+      }
+      else if (stmt.evaluate === evalCloseEach) {
+        if (blockStack.pop() !== evalEach) {
+          throw new Error('Unexpected {/each} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+        }
+      }
+      else if (stmt.evaluate === evalCloseIf) {
+        if ($.inArray(blockStack.pop(), listOfEvalIf) === -1) {
+          throw new Error('Unexpected {/if} on line ' + (linesPassed + countLines(template.substr(0, stmt.start))));
+        }
+      }
+      result      += escString(template.substr(0, stmt.start)) + stmt.evaluate();
+      linesPassed += countLines(template.substr(0, stmt.end));
+      template    = template.substr(stmt.end);
+    }
+    if (blockStack.length > 0) {
+      throw new Error('No closing tag for ' + (blockStack.pop() === evalEach ? '{each}' : '{if}'));
+    }
+
+    result += escString(template);
+
+    // $t, $e - temporary multipurpose variables
+    return 'var local=data,$=local,$d=attrData,$it,$t,$e,retval="' + result + '"; return retval';
+  }
+
+  function escString(string) {
+    return string
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g,  '\\"')
+      .replace(/\n/g, '\\n')
+      .replace(/\t/g, '\\t')
+      .replace(/\r/g, '\\r');
+  }
+
+  var errors    = [];
   var cache     = {};
   var cacheById = {};
-  var errors    = [];
 
-  // ()x0
-  var keyname_re_part = '[$][ki]';
-
-  // ()x0
-  var varname_re_part = '(?:\\w+|[$][$d]?)(?:[.]\\w+)*';
-
-  // ()x0
-  var complex_varname_re_part = varname_re_part + '(?:[.]\\w+|\\['+varname_re_part+'\\])*';
-
-  // ()x0
-  var digital_re_part = '[+-]?\\d+(?:[.]\\d+)*';
-
-  var string_re_part = "'[^'\\\\]*'";
-
-  //                     1
-  var operand_re_part = '(' + [
-    complex_varname_re_part,
-    keyname_re_part,
-    digital_re_part,
-    string_re_part
-  ].join('|')+')';
-
-  //                               1                 2          3
-  var func_operand_re_part = '(?:'+operand_re_part+'|(\\w+)[(]'+operand_re_part+'[)])';
-
-
-  //                                1 2 3
-  var func_re = new RegExp('[{]=' + func_operand_re_part + '[}]', 'g');
-  //                                   1
-  var varorkeyname_re = new RegExp('[{]('+keyname_re_part+'|'+complex_varname_re_part+')[}]', 'g');
-
-  var if_re = new RegExp(
-  //      1       2
-      '[{](else-)?(if|if-not|unless)\\s+'
-  //    3 4 5
-      + func_operand_re_part
-  //            6                   7 8 9
-      + '(?:\\s*([<>]=?|[!=]=)\\s*'+func_operand_re_part+')?'
-      + '[}]',
-    'gi');
-
-  //                         1      2       3     4      5         6   7     8      9
-  var if_sub = function(str, elsec, constr, var1, func1, funcvar1, op, var2, func2, funcvar2) {
-    var retval = '";'+(elsec ? '}else ' : '')
-               + 'if('+(constr==='unless'||constr==='if-not'?'!':'')+'('
-               + (var1 ? var_or_lit_conv(var1) : func_var_or_lit_conv(func1, funcvar1));
-    if (op)
-    {
-      retval += ' '+op+' ';
-      retval += var2 ? var_or_lit_conv(var2) : func_var_or_lit_conv(func2, funcvar2);
-    }
-    return retval+')){retval+="';
-  };
-
-  //                                 1                2
-  var if_empty_re = new RegExp('[{]if(-not)?-empty\\s+('+complex_varname_re_part+')[}]', 'gi');
-
-  var each_re = new RegExp(
-    //          12     3          4       5          6                   7
-    '[{]each\\s+((\\w+)(\\s+as\\s+(\\w+))?(\\s+at\\s+(\\w+))?\\s+in\\s+)?('+complex_varname_re_part+')[}]', 'gi'
-  );
-
-  //                                1     2               3
-  var escape_re = new RegExp('[{](?:(esc)|(esc-)?json)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
-
-  //                               1              2            3
-  var template_re = new RegExp('[{](esc-)?tmpl\\s+([\\w-]+)\\s+(' + keyname_re_part + '|' + complex_varname_re_part + ')' + '[}]', 'gi');
-
-  var var_conv = function (token) {
-    return token.replace(/(?:[.]|^(?!\$))(\w+)/g, '["$1"]')
-                .replace(/\[(\w+)/g, '[["$1"]')
-                .replace(/^\[|(\[)\[/g, '$1local[');
-  };
-
-  var literal_re = new RegExp('^('+[digital_re_part, string_re_part].join('|')+')$', 'gi');
-
-  var var_or_lit_conv = function(token) {
-    return  literal_re.test(token)
-            ? token
-            : var_conv(token);
-  };
-
-  var func_var_or_lit_conv = function(func, token) {
-    switch (func)
-    {
-      case 'num':
-        return 'Number(' + var_or_lit_conv(token) + ')';
-    }
-    // По просьбам трудящихся костыль - поддержка всех глобальных функций
-    return func + '(' + var_or_lit_conv(token) + ')';
-  };
-
-  var gen_func_code = function(template) {
-    return ''
-            // Копируем данные в новый объект или массив,
-            // чтобы не затереть данные при определнии переменных в шаблоне
-            + 'var local=(typeof data==="object")'
-              + '?jQuery.extend(jQuery.isArray(data)?[]:{},data)'
-              + ':data,'
-            + '$=local,$d=attrData,$it,'
-            + 'retval="'
-            + template
-              // escapes quotes and backslash
-              .replace(/\\/g, '\\\\').replace(/"/g,  '\\"')
-              // {each val as key in key.array}
-              .replace(each_re, function(str, a1, val, a3, key, a5, ind, arr) {
-                var retval = '";$it='+var_conv(arr)+';(function($$){'
-                  + 'var $,$k,$keys,'
-                      + '$i=0,$l=jQuery.isArray($$)?$$.length:($keys=this.keys($$),$keys.length);'
-                  + 'while($i<$l){'
-                    + '$=(($k=$keys?$keys[$i]:$i),$$[$k]);';
-                if (val) {retval += 'local["'+val+'"]=$;';}
-                if (key) {retval += 'local["'+key+'"]=$k;';}
-                if (ind) {retval += 'local["'+ind+'"]=$i;';}
-                retval += 'retval+="';
-                return retval;
-              })
-              // {/each}
-              .replace(/[{][/]each[}]/gi, '";$i++}}).call(this,$it);retval+="')
-              // {if[-not]|unless key.subkey[ op key.subkey]}
-              .replace(if_re, if_sub)
-              // {if-empty key.array}
-              .replace(if_empty_re, function(str, not, arr) {
-                var converted_var = var_conv(arr);
-                return '";if('+(not?'!':'')+'('
-                    +'jQuery.isArray('+converted_var+')&&'+converted_var+'.length===0||jQuery.isEmptyObject('+converted_var+')'
-                  +')){retval+="';
-              })
-              // {if-first}, {if-last}, {unless-first}, {unless-last}, {if-not-first}, {if-not-last}
-              .replace(/[{](?:if(-not)?|(unless))-(first|last)[}]/gi, function (str, not, unless, forl) {
-                return '";if($i'
-                  + (not || unless ? '!=' : '==')
-                  + (forl == 'first' ? '0' : '$l-1')
-                  + '){retval+="';
-              })
-              // {/if|unless}
-              .replace(/[{][/](if|unless)[}]/gi, '"}retval+="')
-              // {else}
-              .replace(/[{]else[}]/gi, '"}else{retval+="')
-              // {esc|[esc-]json var} - to stringify or to escape HTML spec characters or both
-              .replace(escape_re, function(str, esc, escJson, varname) {
-                return '"+' + (esc || escJson ? 'this.escape(' : '')
-                            + (!esc ? 'this.json(' : '') + var_conv(varname)
-                            + (!esc && escJson ? ')' : '') + ')+"';
-              })
-              // {[esc-]tmpl id var} - to substitute another template
-              .replace(template_re, function(str, esc, id, varname) {
-                return '"+' + (esc ? 'this.escape(' : '')
-                            + 'this.byId("'+id+'",'+var_conv(varname)+')'
-                            + (esc ? ')' : '') + '+"';
-              })
-              .replace(func_re, function(str, vari, func, funcvari) {
-                return '"+' + (vari ? var_or_lit_conv(vari) : func_var_or_lit_conv(func, funcvari)) + '+"';
-              })
-              // {var[.key[.subkey]]}
-              .replace(varorkeyname_re, function(str, varname) {
-                return '"+'+var_conv(varname)+'+"';
-              })
-              // "{", "}"
-              .replace(/[{]([{}])[}]/g, '$1')
-              // {*} - means that space being around shall be erased
-              .replace(/\s*[{]([*])[}]\s*/g, '')
-              // Tabs, new lines etc.
-              .replace(/\n/g, '\\n')
-              .replace(/\t/g, '\\t')
-              .replace(/\r/g, '\\r')
-            + '"; return retval';
-  };
-
-  $.tera = function(template, data) {
+  var plugin = function(template, data) {
     var code;
     try {
-      if (template in cache === false)
-      {
-        code = gen_func_code(template);
+      if (template in cache === false) {
+        code = genFuncCode(template);
         cache[template] = { func: new Function('data', 'attrData', code), code: code};
       }
-      return cache[template].func.call($.tera, data);
+      return cache[template].func.call(plugin, data);
     }
     catch (e) {
       var error = {
-        template: template,
-        code:     cache[template].code,
-        data:     $.extend(true, {}, data),
-        error:    e.message
+        template: template
+        , code:     cache[template].code
+        , data:     $.extend(true, {}, data)
+        , error:    e.message
       };
 
       if (JSON && JSON.stringify) {
-        error.data_json = JSON.stringify(data);
+        error['data_json'] = JSON.stringify(data);
       }
 
       errors.push(error);
@@ -201,25 +667,18 @@
     }
   };
 
-  $.tera.byId = function(id, data) {
+  plugin.byId = function(id, data) {
     try {
       var $templateEl = $('#'+id);
-      if (id in cacheById === false)
-      {
-        if ($templateEl.length === 0)
-        {
-          return false;
-        }
+      if (id in cacheById === false) {
+        if ($templateEl.length === 0) return false;
         var template = $templateEl.html(), code, func;
 
-        if (template in cache)
-        {
+        if (template in cache) {
           code  = cache.code;
           func  = cache.func;
-        }
-        else
-        {
-          code  = gen_func_code(template);
+        } else {
+          code  = genFuncCode(template);
           func  = new Function('data', 'attrData', code);
         }
 
@@ -230,14 +689,14 @@
     }
     catch (e) {
       var error = {
-        template: cacheById[id] && cacheById[id].template,
-        code:     cacheById[id] && cacheById[id].code,
-        data:     $.extend(true, {}, data),
-        error:    e.message
+        template: cacheById[id] && cacheById[id].template
+        , code:   cacheById[id] && cacheById[id].code
+        , data:   $.extend(true, {}, data)
+        , error:  e.message
       };
 
       if (JSON && JSON.stringify) {
-        error.data_json = JSON.stringify(data);
+        error['data_json'] = JSON.stringify(data);
       }
 
       errors.push(error);
@@ -246,27 +705,21 @@
     }
   };
 
-  $.tera.json = JSON && JSON.stringify || function() { throw new Error('JSON object is not provided') };
-
-  $.tera.errors = function() { return errors; };
-
-  $.tera.lastError = function() {
-    return errors[errors.length - 1];
-  };
+  plugin.json = JSON && JSON.stringify || function() { throw new Error('JSON object is not provided') };
 
   // Получение собственных свойств объекта
-  $.tera.keys = Object.keys || (function () {
+  plugin.keys = Object.keys || (function () {
     'use strict';
     var hasOwnProperty = Object.prototype.hasOwnProperty,
       hasDontEnumBug = !({toString: null}).propertyIsEnumerable('toString'),
       dontEnums = [
-        'toString',
-        'toLocaleString',
-        'valueOf',
-        'hasOwnProperty',
-        'isPrototypeOf',
-        'propertyIsEnumerable',
-        'constructor'
+        'toString'
+        , 'toLocaleString'
+        , 'valueOf'
+        , 'hasOwnProperty'
+        , 'isPrototypeOf'
+        , 'propertyIsEnumerable'
+        , 'constructor'
       ],
       dontEnumsLength = dontEnums.length;
 
@@ -292,8 +745,17 @@
     };
   }());
 
+  plugin.values = function(obj) {
+    if ($.isArray(obj)) return obj;
+    var values = [];
+    for (var i=0, keys=this.keys(obj), len=keys.length; i<len; i++) {
+      values.push(obj[keys[i]]);
+    }
+    return values;
+  };
+
   // Экранирование специальных символов HTML
-  $.tera.escape = function(str) {
+  plugin.escape = function(str) {
     return (''+str).replace(/[&<'"]/g, function(match) {
       switch(match[0])
       {
@@ -305,34 +767,51 @@
     });
   };
 
-  $.tera.clearCache = function() {
+  plugin.proto = Object.create || function(source) {
+    var constructor = function(){};
+    constructor.prototype = source;
+    return new constructor();
+  };
+
+  plugin.errors    = function() { return errors; };
+  plugin.cache     = function() { return cache; };
+  plugin.cacheById = function() { return cacheById; };
+
+  plugin.lastError = function() {
+    return errors[errors.length - 1];
+  };
+
+  plugin.clearCache = function() {
     cache = {};
     cacheById = {};
   };
+
+  $.tera = plugin;
 
   $(function(){
     $('script[type="text/template-tera"]').each(function() {
       var id, template, code, func;
 
-      try {
+      try
+      {
         id        = $(this).attr('id');
         template  = $(this).html();
-        code      = gen_func_code(template);
+        code      = genFuncCode(template);
         func      = new Function('data', 'attrData', code);
 
         cache[template] = { func: func, code: code };
         cacheById[id]   = { func: func, code: code, template: template };
       }
-      catch (e) {
+      catch (e)
+      {
         errors.push({
-          template: template,
-          code:     code,
-          error:    e.message
+          template: template
+          , code:   code
+          , error:  e.message
         });
 
         throw e;
       }
     });
-  });
-
-})(jQuery);
+  })
+}) (jQuery);

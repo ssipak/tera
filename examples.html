@@ -3,14 +3,33 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <title>Tera Templates Examples</title>
-    <script type="text/javascript" src="http://code.jquery.com/jquery.min.js"></script>
+    <script type="text/javascript" src="jquery-1.8.3.min.js"></script>
     <script type="text/javascript" src="jquery.tera.js"></script>
   </head>
   <body>
     <div id="distance_table">
-      <script type="text/template-tera" id="distance_table_template" data-copyright="Ssipak co">
-        <h1>{esc title}</h1>
-        <h2>{tmpl train_list_template trains}</h2>
+      <script type="text/template-tera" id="train_list_template">
+        Поезда с именами {each trains}
+        {*}
+        {if-first}({/if}
+        {*}{$k} [{$.length}]
+        {func(
+          $k,
+          5
+        )*}
+        {if-last}){else}, {/if}
+        {*}
+        {/each}
+        {if-key 'Россия' in trains}
+        <p>Поезд с именем "Россия"? Очень оригинально!</p>
+        {else}
+        <p>Странно, что ни один поезд не назван "Россия".</p>
+        {/if}
+      </script>
+
+      <script type="text/template-tera" id="distance_table_template" data-copyright="Ssipak &copy;">
+        <h1>{raw title}</h1>
+        <h2>{tmpl train_list_template {trains, func}}</h2>
         <table>
           <tr>
             <td><input type="checkbox" checked="checked" /></td>
@@ -18,53 +37,81 @@
               <td>{$.name}</td>
             {/each}
           </tr>
+          {*}
           {each station in stations}
             <tr>
               <td>{$.name}</td>
               {each stations}
                 <td>
-                  {if distance[$.id][station.id] == ''}
-                    &mdash;
+                  {if distance[$.id][station.id]}
+                    {distance[$.id][station.id]} км
+                  {else-if distance[station.id][$.id]}
+                    {distance[station.id][$.id]} км
                   {else}
-                    {distance[$.id][station.id]}
+                    &mdash;
                   {/if}
                 </td>
               {/each}
             </tr>
           {/each}
         </table>
+        <p>json: {json $}</p>
+        <p>"{<}<{>}": "{<}", "{<}>{>}": "{>}"</p>
+        <p>
+          {each word in calc(["veni", "vidi", "vici"])}
+            {calc(word + " " + (word.length-1))}
+          {/each}
+        </p>
         <small>{$d.copyright}</small>
       </script>
 
-      <script type="text/template-tera" id="train_list_template">
-        Поезда с именами {each $}
-          {*}
-          {if-first}({else}, {/if}{$k}{if-last}){/if}
-          {*}
-        {/each}, {esc-json $}
+      <script type="text/template-tera" id="performance_template">
+        <dl>
+          <dt>Iterations' count:</dt>
+          <dd>{iteration_count}</dd>
+
+          <dt>Time elapsed:</dt>
+          <dd>{time_elapsed} ms</dd>
+        </dl>
       </script>
     </div>
+
     <script type="text/javascript">
       $(document).ready(function() {
-        var data = {
-          title: 'Расстояния между<strike> населенными пунктами</strike> городами',
+        var distanceTableData = {
+          title: 'Расстояния между <strike>населенными пунктами</strike> городами',
           stations: [
             {name: 'Владивосток', id: 'vl'},
             {name: 'Нью-Йорк',    id: 'ny'},
             {name: 'Париж',       id: 'pa'}
           ],
           distance: {
-            vl: {vl: 0,       ny: 10329.3, pa: 8671.6},
-            ny: {vl: 10329.3, ny: 0,       pa: 5850.3},
-            pa: {vl: 8671.6,  ny: 5850.3,  pa: 0}
+            vl: {ny: 10329.3, pa: 8671.6},
+            ny: {pa: 5850.3},
+            pa: {}
           },
           trains: {
             'Россия': ['Москва', 'Екатеринбург', 'Новосибирск', 'Иркутск', 'Владивосток'],
             'Афанасий Никитин': ['Москва', 'Санкт-Петербург'],
             'Волга': ['Санкт-Петербург', 'Москва', 'Нижний Новгород']
-          }
+          },
+          func: function(a, b) { return a.length <= b ? 'town' : 'city' },
+          calc: function(x) { return x }
         };
-        $('#distance_table').html($.tera.byId('distance_table_template', data));
+
+
+        var iteration_count = 10000;
+        var time = Date.now();
+        for (var i=0; i<iteration_count; i++)
+        {
+          $.tera.byId('distance_table_template', distanceTableData);
+        }
+
+        $('#distance_table').html(
+          $.tera.byId('distance_table_template', distanceTableData)
+          +
+          $.tera.byId('performance_template', {iteration_count: iteration_count, time_elapsed: Date.now() - time})
+        );
       });
     </script>
   </body>

@@ -1,0 +1,33 @@
+{
+  "name": "tera",
+  "version": "2.1.1",
+  "description": "Compiling javascript template engine",
+  "main": "-",
+  "scripts": {
+    "test": "-",
+    "gulp": "node ./node_modules/gulp/bin/gulp.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ssipak/tera.git"
+  },
+  "keywords": [
+    "compiling",
+    "template",
+    "engine",
+    "tera"
+  ],
+  "author": "Konstantin Krylov",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/ssipak/tera/issues"
+  },
+  "homepage": "https://github.com/ssipak/tera",
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "gulp-envify": "^1.0.0",
+    "gulp-rename": "^1.4.0",
+    "gulp-uglify": "^3.0.1"
+  },
+  "dependencies": {}
+}
